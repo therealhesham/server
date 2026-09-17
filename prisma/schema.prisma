@@ -1,0 +1,864 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model ActivityLog {
+  id         Int      @id @default(autoincrement())
+  kind       String   @db.VarChar(32)
+  path       String?  @db.VarChar(512)
+  actorLabel String?  @db.VarChar(255)
+  userId     Int?
+  ip         String?  @db.VarChar(64)
+  userAgent  String?  @db.VarChar(512)
+  createdAt  DateTime @default(now())
+  carModelId Int?
+  detail     String?  @db.VarChar(255)
+  referrer   String?  @db.VarChar(255)
+
+  @@index([createdAt])
+  @@index([kind, carModelId])
+  @@index([kind, createdAt])
+}
+
+model AdminEmployee {
+  id                   Int           @id @default(autoincrement())
+  email                String        @unique @db.VarChar(255)
+  passwordHash         String        @db.VarChar(255)
+  name                 String?       @db.VarChar(255)
+  branchId             Int?
+  isSuperAdmin         Boolean       @default(false)
+  isActive             Boolean       @default(true)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime
+  permissionsJson      String?       @db.Text
+  notifyOnBookingEmail Boolean       @default(false)
+  cityId               Int?
+  notifyGlobalTo       Boolean       @default(false)
+  notifyGlobalCc       Boolean       @default(false)
+  jobRoleId            Int?
+  Branch               Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  City                 City?         @relation(fields: [cityId], references: [id])
+  AdminJobRole         AdminJobRole? @relation(fields: [jobRoleId], references: [id])
+
+  @@index([branchId])
+  @@index([cityId], map: "AdminEmployee_cityId_fkey")
+  @@index([isActive])
+  @@index([jobRoleId])
+}
+
+model AdminJobRole {
+  id              Int             @id @default(autoincrement())
+  slug            String          @unique @db.VarChar(64)
+  name            String          @db.VarChar(255)
+  permissionsJson String?         @db.Text
+  isActive        Boolean         @default(true)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime
+  AdminEmployee   AdminEmployee[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+model AdminPageView {
+  id            Int      @id @default(autoincrement())
+  employeeId    Int?
+  employeeLabel String?  @db.VarChar(255)
+  isSuperAdmin  Boolean  @default(false)
+  path          String   @db.VarChar(512)
+  ip            String?  @db.VarChar(64)
+  userAgent     String?  @db.VarChar(512)
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([employeeId, createdAt])
+  @@index([path, createdAt])
+}
+
+model BookingCheckoutDraft {
+  token       String    @id @db.VarChar(64)
+  payloadJson String    @db.LongText
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  alertSentAt DateTime?
+
+  @@index([createdAt, alertSentAt])
+  @@index([expiresAt])
+}
+
+model BookingCheckoutOtp {
+  id             Int      @id @default(autoincrement())
+  destinationKey String   @unique @db.VarChar(320)
+  codeHash       String   @db.VarChar(64)
+  expiresAt      DateTime
+  verifyAttempts Int      @default(0)
+  lastSentAt     DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model BookingExtraCharge {
+  id               Int       @id @default(autoincrement())
+  bookingId        Int
+  kind             String    @db.VarChar(32)
+  description      String    @db.Text
+  amountExclTaxSar Float
+  isTaxable        Boolean   @default(false)
+  vatRatePercent   Int       @default(0)
+  amountInclTaxSar Float
+  status           String    @default("ACTIVE") @db.VarChar(16)
+  voidedAt         DateTime?
+  voidedBy         String?   @db.VarChar(128)
+  voidReason       String?   @db.VarChar(500)
+  createdBy        String?   @db.VarChar(128)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime
+
+  @@index([bookingId, createdAt])
+  @@index([status, createdAt])
+}
+
+model BookingLog {
+  id         Int      @id @default(autoincrement())
+  bookingId  Int
+  event      String   @db.VarChar(64)
+  actorKind  String   @db.VarChar(16)
+  actorName  String?  @db.VarChar(128)
+  fromStatus String?  @db.VarChar(32)
+  toStatus   String?  @db.VarChar(32)
+  notes      String?  @db.VarChar(500)
+  metaJson   String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([bookingId, createdAt])
+}
+
+model BookingRequest {
+  id                                           Int                  @id @default(autoincrement())
+  fullName                                     String
+  phone                                        String
+  ageRange                                     String
+  carType                                      String
+  branchId                                     Int?
+  returnBranchId                               Int?
+  interBranchReturnConfirmedAt                 DateTime?
+  pickupMode                                   String?              @db.VarChar(16)
+  deliveryLat                                  Float?
+  deliveryLng                                  Float?
+  pickupDate                                   DateTime
+  numberOfDays                                 Int
+  termsAccepted                                Boolean              @default(true)
+  status                                       String               @default("NEW")
+  createdAt                                    DateTime             @default(now())
+  updatedAt                                    DateTime
+  carModelId                                   Int?
+  kind                                         BookingRequest_kind  @default(INQUIRY)
+  addonsJson                                   String?              @db.Text
+  paymentStatus                                String               @default("PENDING") @db.VarChar(24)
+  paidAt                                       DateTime?
+  paymentMethod                                String?              @db.VarChar(24)
+  customerId                                   Int?
+  deliveryAddress                              String?              @db.Text
+  contactEmail                                 String?              @db.VarChar(255)
+  idDocumentKind                               String?              @db.VarChar(24)
+  nationalIdNumber                             String?              @db.VarChar(16)
+  passportNumber                               String?              @db.VarChar(32)
+  licenseNumber                                String?              @db.VarChar(64)
+  idCardImageUrl                               String?              @db.Text
+  driverLicenseImageUrl                        String?              @db.Text
+  licenseExpiryDate                            DateTime?            @db.Date
+  cancellationDeductedDays                     Float?
+  cancelledAt                                  DateTime?
+  cancellationRefundAmountSar                  Float?
+  cancellationRefundExternalRef                String?              @db.VarChar(128)
+  vehiclePickedUpAt                            DateTime?
+  vehicleReturnedAt                            DateTime?
+  balanceDueAtBranchSar                        Float?
+  paymentReceivedBy                            String?              @db.VarChar(128)
+  paidAmountSar                                Float?
+  snapshotTotalAmountSar                       Float?
+  paymentExternalRef                           String?              @db.VarChar(128)
+  paymentGatewayRef                            String?              @db.VarChar(128)
+  paymentSessionRef                            String?              @db.VarChar(128)
+  refundDueSettledAt                           DateTime?
+  refundDueSettledBy                           String?              @db.VarChar(128)
+  refundDueSettledMethod                       String?              @db.VarChar(24)
+  refundDueSettledRef                          String?              @db.VarChar(128)
+  refundDueToCustomerSar                       Float?
+  cancellationReasonAr                         String?              @db.VarChar(500)
+  lateReturnDecidedBy                          String?              @db.VarChar(128)
+  lateReturnHours                              Float?
+  lateReturnPenaltyExclTaxSar                  Float?
+  lateReturnPenaltyWaived                      Boolean              @default(false)
+  vehiclePlateNumber                           String?              @db.VarChar(64)
+  vehicleUnitId                                Int?
+  odometerAtPickupKm                           Int?
+  odometerAtReturnKm                           Int?
+  rentalPeriodKind                             String?              @db.VarChar(8)
+  adminNotes                                   String?              @db.Text
+  legacyRef                                    String?              @unique @db.VarChar(64)
+  rejectionReasonAr                            String?              @db.VarChar(500)
+  isHidden                                     Boolean              @default(false)
+  /// مصدر الحجز — "mobile app - ios" أو "mobile app - android" لحجوزات التطبيق، فارغ لحجوزات الموقع.
+  platform                                     String?              @db.VarChar(24)
+  Branch_BookingRequest_branchIdToBranch       Branch?              @relation("BookingRequest_branchIdToBranch", fields: [branchId], references: [id])
+  CarModel                                     CarModel?            @relation(fields: [carModelId], references: [id])
+  User                                         User?                @relation(fields: [customerId], references: [id])
+  Branch_BookingRequest_returnBranchIdToBranch Branch?              @relation("BookingRequest_returnBranchIdToBranch", fields: [returnBranchId], references: [id])
+  VehicleUnit                                  VehicleUnit?         @relation(fields: [vehicleUnitId], references: [id])
+  CouponRedemption                             CouponRedemption?
+  PaymentTransaction                           PaymentTransaction[]
+
+  @@index([branchId])
+  @@index([carModelId])
+  @@index([customerId])
+  @@index([kind, createdAt])
+  @@index([returnBranchId])
+  @@index([status, createdAt])
+  @@index([vehiclePlateNumber])
+  @@index([vehicleUnitId])
+  @@index([isHidden, createdAt])
+}
+
+model Branch {
+  id                                                   Int                     @id @default(autoincrement())
+  slug                                                 String                  @unique @db.VarChar(64)
+  name                                                 String
+  tagline                                              String?                 @db.VarChar(255)
+  image                                                String?                 @db.Text
+  alt                                                  String?                 @db.Text
+  sortOrder                                            Int                     @default(0)
+  isActive                                             Boolean                 @default(true)
+  isNew                                                Boolean                 @default(false)
+  createdAt                                            DateTime                @default(now())
+  updatedAt                                            DateTime
+  address                                              String?                 @db.VarChar(255)
+  mapUrl                                               String?                 @db.Text
+  phone                                                String?                 @db.VarChar(32)
+  cityId                                               Int
+  openingHoursJson                                     String?                 @db.Text
+  latitude                                             Float?
+  longitude                                            Float?
+  deliveryFeePerKmSar                                  Float                   @default(0)
+  nameEn                                               String?
+  taglineEn                                            String?                 @db.VarChar(255)
+  addressEn                                            String?                 @db.VarChar(255)
+  detailedAddress                                      String?                 @db.Text
+  detailedAddressEn                                    String?                 @db.Text
+  AdminEmployee                                        AdminEmployee[]
+  BookingRequest_BookingRequest_branchIdToBranch       BookingRequest[]        @relation("BookingRequest_branchIdToBranch")
+  BookingRequest_BookingRequest_returnBranchIdToBranch BookingRequest[]        @relation("BookingRequest_returnBranchIdToBranch")
+  City                                                 City                    @relation(fields: [cityId], references: [id])
+  Fleet                                                Fleet[]
+  RentalDiscount                                       RentalDiscount[]
+  VehicleMaintenanceLog                                VehicleMaintenanceLog[]
+  VehicleUnit                                          VehicleUnit[]
+
+  @@index([cityId])
+  @@index([isActive])
+  @@index([isNew])
+  @@index([sortOrder])
+}
+
+model Brand {
+  id             Int              @id @default(autoincrement())
+  name           String           @unique
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  nameEn         String?
+  CarModel       CarModel[]
+  RentalDiscount RentalDiscount[]
+}
+
+model CarModel {
+  id                     Int                   @id @default(autoincrement())
+  name                   String
+  brandId                Int
+  categoryId             Int
+  year                   Int
+  chairs                 Int
+  engine                 String
+  transmission           CarModel_transmission
+  fuel                   CarModel_fuel
+  price                  Int
+  vatRatePercent         Int                   @default(15)
+  image                  String?
+  alt                    String?
+  cta                    String?
+  badge                  String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime
+  nameEn                 String?
+  ctaEn                  String?
+  badgeEn                String?
+  priceMonthlyExclTax    Int?
+  displayOrder           Int                   @default(0)
+  minPriceMonthlyExclTax Float?
+  minPricePerDayExclTax  Float?
+  BookingRequest         BookingRequest[]
+  Brand                  Brand                 @relation(fields: [brandId], references: [id])
+  FleetCategory          FleetCategory         @relation(fields: [categoryId], references: [id])
+  Fleet                  Fleet[]
+  RentalDiscount         RentalDiscount[]
+  VehicleUnit            VehicleUnit[]
+
+  @@unique([brandId, name, year])
+  @@index([categoryId])
+}
+
+model CheckoutOneTimeFee {
+  id            Int      @id @default(autoincrement())
+  slug          String   @unique @db.VarChar(64)
+  labelAr       String   @db.VarChar(255)
+  feeExclVatSar Int
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime
+  labelEn       String?  @db.VarChar(255)
+
+  @@index([isActive, sortOrder])
+}
+
+model City {
+  id                                                         Int                    @id @default(autoincrement())
+  slug                                                       String                 @unique @db.VarChar(64)
+  name                                                       String                 @db.VarChar(255)
+  sortOrder                                                  Int                    @default(0)
+  isActive                                                   Boolean                @default(true)
+  createdAt                                                  DateTime               @default(now())
+  updatedAt                                                  DateTime
+  nameEn                                                     String?                @db.VarChar(255)
+  AdminEmployee                                              AdminEmployee[]
+  Branch                                                     Branch[]
+  InterCityShippingFee_InterCityShippingFee_fromCityIdToCity InterCityShippingFee[] @relation("InterCityShippingFee_fromCityIdToCity")
+  InterCityShippingFee_InterCityShippingFee_toCityIdToCity   InterCityShippingFee[] @relation("InterCityShippingFee_toCityIdToCity")
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  email     String   @db.VarChar(255)
+  phone     String   @db.VarChar(32)
+  subject   String   @db.VarChar(255)
+  message   String   @db.Text
+  status    String   @default("NEW") @db.VarChar(24)
+  locale    String   @default("ar") @db.VarChar(8)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+
+  @@index([status, createdAt])
+}
+
+model CorporateBookingLead {
+  id           Int      @id @default(autoincrement())
+  companyName  String   @db.VarChar(255)
+  companyEmail String   @db.VarChar(255)
+  taxNumber    String   @db.VarChar(64)
+  details      String   @db.Text
+  phone        String   @db.VarChar(32)
+  status       String   @default("NEW") @db.VarChar(24)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+
+  @@index([status, createdAt])
+}
+
+model CouponCode {
+  id                  Int                  @id @default(autoincrement())
+  code                String               @unique @db.VarChar(32)
+  kind                CouponCode_kind
+  value               Int
+  scope               CouponCode_scope
+  startsAt            DateTime?
+  endsAt              DateTime?
+  isActive            Boolean              @default(true)
+  maxUses             Int?
+  usesCount           Int                  @default(0)
+  perCustomerLimit    Int?
+  createdByEmployeeId Int?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime
+  appliesTo           CouponCode_appliesTo @default(DAILY_ONLY)
+  canBypassMinPrice   Boolean              @default(false)
+  CouponRedemption    CouponRedemption[]
+
+  @@index([isActive])
+  @@index([startsAt, endsAt])
+}
+
+model CouponRedemption {
+  id                Int            @id @default(autoincrement())
+  couponCodeId      Int
+  bookingRequestId  Int            @unique
+  customerPhone     String         @db.VarChar(16)
+  discountAmountSar Float
+  redeemedAt        DateTime       @default(now())
+  BookingRequest    BookingRequest @relation(fields: [bookingRequestId], references: [id], onDelete: Cascade)
+  CouponCode        CouponCode     @relation(fields: [couponCodeId], references: [id], onDelete: Cascade)
+
+  @@index([couponCodeId])
+  @@index([customerPhone])
+}
+
+model CustomerLoginOtp {
+  id             Int      @id @default(autoincrement())
+  destinationKey String   @unique @db.VarChar(320)
+  codeHash       String   @db.VarChar(64)
+  expiresAt      DateTime
+  verifyAttempts Int      @default(0)
+  lastSentAt     DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model Fleet {
+  id                     Int      @id @default(autoincrement())
+  modelId                Int
+  branchId               Int
+  quantity               Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime
+  pricePerDayExclTax     Float?
+  priceMonthlyExclTax    Float?
+  isVisible              Boolean  @default(true)
+  displayOrder           Int      @default(0)
+  minPriceMonthlyExclTax Float?
+  minPricePerDayExclTax  Float?
+  Branch                 Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  CarModel               CarModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([modelId, branchId])
+  @@index([branchId])
+  @@index([isVisible, displayOrder])
+  @@index([modelId])
+}
+
+model FleetCategory {
+  id            Int        @id @default(autoincrement())
+  slug          String     @unique @db.VarChar(64)
+  title         String
+  description   String     @db.Text
+  image         String
+  alt           String?
+  sortOrder     Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime
+  titleEn       String?
+  descriptionEn String?    @db.Text
+  CarModel      CarModel[]
+}
+
+model GalleryFolder {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique @db.VarChar(64)
+  label     String   @db.VarChar(255)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+
+  @@index([sortOrder])
+}
+
+model InterCityShippingFee {
+  id                                         Int      @id @default(autoincrement())
+  fromCityId                                 Int
+  toCityId                                   Int
+  feeExclVatSar                              Int
+  isActive                                   Boolean  @default(true)
+  sortOrder                                  Int      @default(0)
+  createdAt                                  DateTime @default(now())
+  updatedAt                                  DateTime
+  City_InterCityShippingFee_fromCityIdToCity City     @relation("InterCityShippingFee_fromCityIdToCity", fields: [fromCityId], references: [id], onDelete: Cascade)
+  City_InterCityShippingFee_toCityIdToCity   City     @relation("InterCityShippingFee_toCityIdToCity", fields: [toCityId], references: [id], onDelete: Cascade)
+
+  @@unique([fromCityId, toCityId])
+  @@index([isActive, sortOrder])
+  @@index([toCityId], map: "InterCityShippingFee_toCityId_fkey")
+}
+
+model Notification {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  title      String   @db.VarChar(255)
+  message    String   @db.Text
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId, isRead, createdAt])
+}
+
+model PaymentTransaction {
+  id             Int            @id @default(autoincrement())
+  bookingId      Int
+  kind           String         @db.VarChar(32)
+  status         String         @default("COMPLETED") @db.VarChar(24)
+  direction      String         @db.VarChar(8)
+  amountSar      Float
+  method         String?        @db.VarChar(24)
+  actorKind      String         @db.VarChar(16)
+  actorName      String?        @db.VarChar(128)
+  gatewayRef     String?        @db.VarChar(128)
+  sessionRef     String?        @db.VarChar(128)
+  externalRef    String?        @db.VarChar(128)
+  notes          String?        @db.VarChar(500)
+  createdAt      DateTime       @default(now())
+  BookingRequest BookingRequest @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId, createdAt])
+  @@index([gatewayRef])
+  @@index([kind, status, createdAt])
+  @@index([sessionRef])
+}
+
+model RentalAddon {
+  id             Int      @id @default(autoincrement())
+  slug           String   @unique @db.VarChar(64)
+  titleAr        String   @db.VarChar(255)
+  descriptionAr  String?  @db.Text
+  pricePerDay    Int
+  iconKey        String?  @db.VarChar(32)
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  exclusiveGroup String?  @db.VarChar(64)
+  infoAr         String?  @db.Text
+  titleEn        String?  @db.VarChar(255)
+  descriptionEn  String?  @db.Text
+  infoEn         String?  @db.Text
+
+  @@index([isActive, sortOrder])
+}
+
+model RentalDiscount {
+  id         Int                      @id @default(autoincrement())
+  labelAr    String                   @db.VarChar(255)
+  kind       RentalDiscount_kind
+  value      Int
+  startsAt   DateTime?
+  endsAt     DateTime?
+  brandId    Int?
+  carModelId Int?
+  branchId   Int?
+  isActive   Boolean                  @default(true)
+  sortOrder  Int                      @default(0)
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime
+  appliesTo  RentalDiscount_appliesTo @default(DAILY_ONLY)
+  Branch     Branch?                  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  Brand      Brand?                   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  CarModel   CarModel?                @relation(fields: [carModelId], references: [id], onDelete: Cascade)
+
+  @@index([branchId])
+  @@index([brandId])
+  @@index([carModelId])
+  @@index([isActive, sortOrder])
+  @@index([startsAt, endsAt])
+}
+
+model RentalTerm {
+  id        Int      @id @default(autoincrement())
+  titleAr   String   @db.VarChar(255)
+  titleEn   String?  @db.VarChar(255)
+  bodyAr    String   @db.Text
+  bodyEn    String?  @db.Text
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+
+  @@index([isActive, sortOrder])
+}
+
+model SiteSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(64)
+  value     String   @db.Text
+  updatedAt DateTime
+}
+
+/// إعدادات خاصة بتطبيق الموبايل فقط — منفصلة عن SiteSetting (إعدادات الموقع)
+/// عشان تتحكم فيها لوحة تحكم مستقلة (نفس شكل مفتاح/قيمة).
+model MobileAppSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(64)
+  value     String   @db.Text
+  updatedAt DateTime @default(now())
+}
+
+/// تفضيلات قنوات الإشعار لحساب تطبيق الموبايل — لا صلة لها بالموقع.
+model NotificationPreference {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique
+  bookingUpdates Boolean  @default(true)
+  promotions     Boolean  @default(false)
+  updatedAt      DateTime @default(now())
+}
+
+model SubscriptionDocument {
+  id                  Int                       @id @default(autoincrement())
+  subscriptionId      Int
+  kind                SubscriptionDocument_kind
+  storageRelativePath String                    @db.VarChar(512)
+  originalFileName    String                    @db.VarChar(255)
+  mimeType            String                    @db.VarChar(128)
+  sizeBytes           Int
+  uploadedAt          DateTime                  @default(now())
+  verifiedAt          DateTime?
+
+  @@unique([subscriptionId, kind])
+  @@index([subscriptionId])
+}
+
+model SubscriptionPayment {
+  id             Int                        @id @default(autoincrement())
+  subscriptionId Int
+  amountSar      Int
+  vatRatePercent Int                        @default(15)
+  paymentKind    String                     @default("INITIAL") @db.VarChar(32)
+  status         SubscriptionPayment_status @default(PENDING)
+  paymentMethod  String?                    @db.VarChar(24)
+  externalRef    String?                    @db.VarChar(255)
+  paidAt         DateTime?
+  idempotencyKey String?                    @unique @db.VarChar(128)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime
+
+  @@index([status])
+  @@index([subscriptionId, createdAt])
+}
+
+model SubscriptionPlan {
+  id                  Int      @id @default(autoincrement())
+  slug                String   @unique @db.VarChar(128)
+  carModelId          Int
+  marketingTitleAr    String?  @db.VarChar(255)
+  descriptionAr       String?  @db.Text
+  monthlyPriceSar     Int
+  mileageKmPerMonth   Int
+  insuranceIncluded   Boolean  @default(true)
+  maintenanceIncluded Boolean  @default(true)
+  depositAmountSar    Int      @default(0)
+  extraKmFeeSarPerKm  Int      @default(3)
+  durationOptionsCsv  String   @default("3,6,12") @db.VarChar(32)
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime
+  marketingTitleEn    String?  @db.VarChar(255)
+  descriptionEn       String?  @db.Text
+
+  @@index([carModelId])
+  @@index([isActive, sortOrder])
+}
+
+model SystemGuide {
+  id               Int              @id @default(autoincrement())
+  sectionId        Int
+  title            String           @db.VarChar(255)
+  description      String?          @db.Text
+  kind             SystemGuide_kind
+  fileUrl          String           @db.VarChar(1024)
+  fileKey          String           @db.VarChar(512)
+  originalFileName String           @db.VarChar(255)
+  mimeType         String           @db.VarChar(128)
+  sizeBytes        Int
+  sortOrder        Int              @default(0)
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime
+
+  @@index([sectionId, isActive, sortOrder])
+}
+
+model SystemGuideSection {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([isActive, sortOrder])
+}
+
+model User {
+  id                    Int              @id @default(autoincrement())
+  email                 String           @unique @db.VarChar(255)
+  name                  String?          @db.VarChar(255)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime
+  passwordHash          String?          @db.VarChar(255)
+  phone                 String?          @unique @db.VarChar(16)
+  driverLicenseImageUrl String?          @db.Text
+  idCardImageUrl        String?          @db.Text
+  idDocumentKind        String?          @db.VarChar(24)
+  licenseExpiryDate     DateTime?        @db.Date
+  licenseNumber         String?          @db.VarChar(64)
+  nationalIdNumber      String?          @db.VarChar(16)
+  passportNumber        String?          @db.VarChar(32)
+  BookingRequest        BookingRequest[]
+}
+
+model UserSubscription {
+  id                      Int                     @id @default(autoincrement())
+  planId                  Int
+  userId                  Int
+  status                  UserSubscription_status @default(PENDING)
+  durationMonths          Int
+  startAt                 DateTime?
+  endAt                   DateTime?
+  monthlyPriceSnapshotSar Int
+  mileageAllowanceKm      Int
+  mileageUsedKm           Int                     @default(0)
+  depositSnapshotSar      Int                     @default(0)
+  autoRenew               Boolean                 @default(false)
+  rejectionReasonAr       String?                 @db.VarChar(500)
+  suspendedReasonAr       String?                 @db.VarChar(500)
+  cancelReasonAr          String?                 @db.VarChar(500)
+  cancelledAt             DateTime?
+  approvedAt              DateTime?
+  lastRenewalReminderAt   DateTime?
+  nextPaymentDueAt        DateTime?
+  unpaidNotifiedAt        DateTime?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime
+  plannedStartDate        DateTime?
+
+  @@index([planId])
+  @@index([status, endAt])
+  @@index([userId, status])
+}
+
+model VehicleMaintenanceLog {
+  id                Int         @id @default(autoincrement())
+  vehicleUnitId     Int
+  kind              String      @db.VarChar(32)
+  status            String      @default("IN_PROGRESS") @db.VarChar(16)
+  description       String      @db.Text
+  startedAt         DateTime
+  completedAt       DateTime?
+  costSar           Float?
+  vendorName        String?
+  invoiceRef        String?     @db.VarChar(128)
+  odometerKm        Int?
+  nextDueDate       DateTime?
+  nextDueOdometerKm Int?
+  branchId          Int?
+  createdBy         String?     @db.VarChar(128)
+  notes             String?     @db.VarChar(500)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime
+  Branch            Branch?     @relation(fields: [branchId], references: [id])
+  VehicleUnit       VehicleUnit @relation(fields: [vehicleUnitId], references: [id], onDelete: Cascade)
+
+  @@index([branchId])
+  @@index([nextDueDate])
+  @@index([status, startedAt])
+  @@index([vehicleUnitId, startedAt])
+}
+
+model VehicleUnit {
+  id                    Int                     @id @default(autoincrement())
+  plateNumber           String                  @unique @db.VarChar(64)
+  chassisNumber         String?                 @db.VarChar(64)
+  color                 String?                 @db.VarChar(64)
+  carModelId            Int
+  branchId              Int?
+  status                String                  @default("AVAILABLE") @db.VarChar(24)
+  notes                 String?                 @db.Text
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime
+  BookingRequest        BookingRequest[]
+  VehicleMaintenanceLog VehicleMaintenanceLog[]
+  Branch                Branch?                 @relation(fields: [branchId], references: [id])
+  CarModel              CarModel                @relation(fields: [carModelId], references: [id], onDelete: Cascade)
+
+  @@index([branchId])
+  @@index([carModelId])
+  @@index([status])
+}
+
+enum CouponCode_kind {
+  PERCENT
+  FIXED
+}
+
+enum RentalDiscount_kind {
+  PERCENT
+  FIXED_DAILY
+  TO_MIN_PRICE
+}
+
+enum SubscriptionDocument_kind {
+  DRIVERS_LICENSE
+  NATIONAL_ID
+  OTHER
+}
+
+enum UserSubscription_status {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  REJECTED
+}
+
+enum CouponCode_scope {
+  RENTAL_ONLY
+  FULL_TOTAL
+}
+
+enum SystemGuide_kind {
+  VIDEO
+  IMAGE
+  PDF
+}
+
+enum SubscriptionPayment_status {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CarModel_transmission {
+  MANUAL
+  AUTOMATIC
+}
+
+enum CarModel_fuel {
+  GASOLINE
+  DIESEL
+  HYBRID
+  ELECTRIC
+}
+
+enum RentalDiscount_appliesTo {
+  DAILY_ONLY
+  MONTHLY_ONLY
+  DAILY_AND_MONTHLY
+}
+
+enum CouponCode_appliesTo {
+  DAILY_ONLY
+  MONTHLY_ONLY
+  DAILY_AND_MONTHLY
+}
+
+enum BookingRequest_kind {
+  INQUIRY
+  DIRECT
+}

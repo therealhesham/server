@@ -1,0 +1,10 @@
+services:
+  server:
+    build: .
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Riyadh
+    ports:
+      - '3210'
+    restart: unless-stopped
