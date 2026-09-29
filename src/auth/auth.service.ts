@@ -12,7 +12,6 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 45 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
 
-const SITE_KEY_BOOKING_OTP_CHANNEL = 'booking_otp_channel';
 const SITE_KEY_WHATSAPP_TEMPLATE_LOGIN_OTP = 'whatsapp_template_customer_login_otp';
 const DEFAULT_WHATSAPP_TEMPLATE_LOGIN_OTP =
   'رمز تسجيل الدخول في روائس لتأجير السيارات: {otp}\n\nصالح لمدة 10 دقائق.';
@@ -86,24 +85,18 @@ export class AuthService {
     private readonly whatsapp: EvolutionWhatsAppService,
   ) {}
 
-  private async getOtpChannel(): Promise<'OFF' | 'SMS' | 'EMAIL' | 'WHATSAPP'> {
-    const row = await this.prisma.siteSetting.findUnique({ where: { key: SITE_KEY_BOOKING_OTP_CHANNEL } });
-    const v = String(row?.value ?? '').trim().toUpperCase();
-    return v === 'SMS' || v === 'EMAIL' || v === 'WHATSAPP' ? v : 'OFF';
-  }
-
   async sendOtp(phoneRaw: string): Promise<{ ok: true }> {
     const e164 = saudiLocalNineToE164(phoneRaw);
     if (!e164) {
       throw new BadRequestException('أدخل رقم جوال سعودي صالح (9 أرقام تبدأ بـ 5).');
     }
 
-    const channel = await this.getOtpChannel();
-    if (channel === 'OFF') {
-      throw new BadRequestException('خدمة رمز تسجيل الدخول غير مفعّلة من لوحة التحكم.');
-    }
-    if (channel !== 'WHATSAPP') {
-      throw new BadRequestException('قناة إرسال الرمز الحالية غير مدعومة في التطبيق بعد.');
+    // Mobile login OTP is independent of the website's "booking_otp_channel"
+    // control-panel setting — that one gates rentcar's own booking flow and
+    // isn't something the mobile app's admins control. The only requirement
+    // here is that WhatsApp sending itself is configured.
+    if (!this.whatsapp.isConfigured()) {
+      throw new BadRequestException('خدمة إرسال رمز تسجيل الدخول عبر واتساب غير مهيأة على السيرفر.');
     }
 
     const waNumber = e164ToEvolutionWhatsAppNumber(e164);
