@@ -94,9 +94,10 @@ export class AuthService {
     // Mobile login OTP is independent of the website's "booking_otp_channel"
     // control-panel setting — that one gates rentcar's own booking flow and
     // isn't something the mobile app's admins control. The only requirement
-    // here is that WhatsApp sending itself is configured.
-    if (!this.whatsapp.isConfigured()) {
-      throw new BadRequestException('خدمة إرسال رمز تسجيل الدخول عبر واتساب غير مهيأة على السيرفر.');
+    // here is that WhatsApp sending itself is configured, via the dedicated
+    // "إعدادات تطبيق الموبايل" admin page (MobileAppSetting row), not .env.
+    if (!(await this.whatsapp.isConfigured())) {
+      throw new BadRequestException('خدمة إرسال رمز تسجيل الدخول عبر واتساب غير مفعّلة من لوحة تحكم إعدادات تطبيق الموبايل.');
     }
 
     const waNumber = e164ToEvolutionWhatsAppNumber(e164);
