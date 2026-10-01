@@ -131,13 +131,21 @@ export class CouponsService {
       include: { CouponCode: true, BookingRequest: { select: { id: true, pickupDate: true } } },
     });
 
-    return rows.map((r) => ({
-      id: r.id,
-      code: r.CouponCode.code,
-      discountAmountSar: r.discountAmountSar,
-      redeemedAt: r.redeemedAt.toISOString(),
-      bookingId: r.bookingRequestId,
-      bookingPickupAt: r.BookingRequest.pickupDate.toISOString(),
-    }));
+    // A redemption whose coupon or booking row is missing (e.g. the booking was
+    // hard-deleted) would otherwise throw on the null access below and 500 the
+    // whole list — skip those rows instead of failing the request.
+    return rows.flatMap((r) => {
+      if (!r.CouponCode || !r.BookingRequest?.pickupDate) return [];
+      return [
+        {
+          id: r.id,
+          code: r.CouponCode.code,
+          discountAmountSar: r.discountAmountSar,
+          redeemedAt: r.redeemedAt.toISOString(),
+          bookingId: r.bookingRequestId,
+          bookingPickupAt: r.BookingRequest.pickupDate.toISOString(),
+        },
+      ];
+    });
   }
 }
