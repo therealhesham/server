@@ -125,25 +125,43 @@ export class CouponsService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.phone) return [];
 
+    // CouponCode/BookingRequest are declared as required relations, so an
+    // `include` throws "Inconsistent query result: Field BookingRequest is
+    // required to return data, got null" the moment one redemption points at a
+    // booking/coupon row that was deleted outside Prisma (orphaned FK) — which
+    // 500s the entire list. Fetch the scalars, resolve the relations
+    // separately, and drop any redemption whose booking/coupon is gone.
     const rows = await this.prisma.couponRedemption.findMany({
       where: { customerPhone: user.phone },
       orderBy: { redeemedAt: 'desc' },
-      include: { CouponCode: true, BookingRequest: { select: { id: true, pickupDate: true } } },
     });
+    if (rows.length === 0) return [];
 
-    // A redemption whose coupon or booking row is missing (e.g. the booking was
-    // hard-deleted) would otherwise throw on the null access below and 500 the
-    // whole list — skip those rows instead of failing the request.
+    const [bookings, coupons] = await Promise.all([
+      this.prisma.bookingRequest.findMany({
+        where: { id: { in: [...new Set(rows.map((r) => r.bookingRequestId))] } },
+        select: { id: true, pickupDate: true },
+      }),
+      this.prisma.couponCode.findMany({
+        where: { id: { in: [...new Set(rows.map((r) => r.couponCodeId))] } },
+        select: { id: true, code: true },
+      }),
+    ]);
+    const bookingById = new Map(bookings.map((b) => [b.id, b]));
+    const couponById = new Map(coupons.map((c) => [c.id, c]));
+
     return rows.flatMap((r) => {
-      if (!r.CouponCode || !r.BookingRequest?.pickupDate) return [];
+      const booking = bookingById.get(r.bookingRequestId);
+      const coupon = couponById.get(r.couponCodeId);
+      if (!booking?.pickupDate || !coupon) return [];
       return [
         {
           id: r.id,
-          code: r.CouponCode.code,
+          code: coupon.code,
           discountAmountSar: r.discountAmountSar,
           redeemedAt: r.redeemedAt.toISOString(),
           bookingId: r.bookingRequestId,
-          bookingPickupAt: r.BookingRequest.pickupDate.toISOString(),
+          bookingPickupAt: booking.pickupDate.toISOString(),
         },
       ];
     });
