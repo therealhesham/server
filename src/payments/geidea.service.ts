@@ -10,6 +10,8 @@ interface GeideaConfig {
   apiPassword: string;
   apiBase: string;
   hppBase: string;
+  publicUrl: string | null;
+  callbackUrl: string | null;
 }
 
 export interface GeideaSession {
@@ -39,6 +41,12 @@ export class GeideaService {
       apiPassword,
       apiBase: (process.env.GEIDEA_API_BASE?.trim() || 'https://api.ksamerchant.geidea.net').replace(/\/$/, ''),
       hppBase: (process.env.GEIDEA_HPP_BASE?.trim() || 'https://www.ksamerchant.geidea.net').replace(/\/$/, ''),
+      publicUrl: process.env.APP_PUBLIC_URL?.trim().replace(/\/$/, '') || null,
+      // Shares its merchant account + database with rentcar's web app, whose
+      // webhook (app/api/payments/geidea/webhook/route.ts) is the one already
+      // registered/proven with Geidea — points there instead of our own
+      // /payments/geidea/webhook route, which stays as an unused fallback.
+      callbackUrl: process.env.GEIDEA_CALLBACK_URL?.trim() || null,
     };
   }
 
@@ -103,6 +111,13 @@ export class GeideaService {
         signature,
         paymentOperation: 'Pay',
         language: args.language ?? 'ar',
+        // Without these Geidea has nowhere to push the async paid
+        // notification — the app's post-browser reconcile() call becomes the
+        // only path to a PAID status, which misses a customer who pays and
+        // never reopens the app. Both optional only because local/non-HTTPS
+        // dev environments can't receive either callback anyway.
+        ...(cfg.callbackUrl ? { callbackUrl: cfg.callbackUrl } : {}),
+        ...(cfg.publicUrl ? { returnUrl: `${cfg.publicUrl}/payments/geidea/return` } : {}),
       },
     });
 

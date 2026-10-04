@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
 
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUserId } from '../auth/current-user.decorator';
@@ -13,6 +13,21 @@ export class PaymentsController {
   @UseGuards(AuthGuard)
   createSession(@CurrentUserId() userId: number, @Body() dto: CreateSessionDto) {
     return this.paymentsService.createSession(userId, dto.bookingRequestId);
+  }
+
+  // Where Geidea's HPP redirects the in-app browser after checkout (success
+  // or failure). The app itself never reads this page — it only reacts to
+  // the browser closing — so this just gives the customer something sensible
+  // to look at instead of a blank tab before they tap back into the app.
+  @Get('return')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  returnPage() {
+    return `<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>رواء</title></head>
+<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b0b0b;color:#fff;text-align:center;padding:24px">
+<div><p style="font-size:18px">تمت العملية — يمكنك الرجوع إلى التطبيق الآن.</p></div>
+</body></html>`;
   }
 
   @Get('reconcile/:bookingId')
