@@ -79,6 +79,14 @@ export class BookingsService {
     const pricing = await computeBookingPricing(this.prisma as unknown as PrismaClient, dto);
     const { pickupAt, returnAt, numberOfDays, dailyRate, addons, deliveryFee } = pricing;
 
+    // Coupon discount math (coupon-pricing.util.ts) only models per-day/flat
+    // daily-subtotal rentals — applying it to a flat monthly charge would
+    // silently produce a wrong discount, so it's blocked here rather than
+    // guessed at.
+    if (dto.couponCode && pricing.rentalPeriodKind === 'monthly') {
+      throw new BadRequestException('أكواد الخصم غير متاحة حالياً للحجز الشهري.');
+    }
+
     // Resolved (and re-validated) here so a coupon can never be applied
     // twice or on a stale eligibility check between preview and commit.
     let coupon: ResolvedCoupon | null = null;
@@ -130,6 +138,7 @@ export class BookingsService {
           deliveryAddress: dto.deliveryAddress ?? null,
           pickupDate: pickupAt,
           numberOfDays,
+          rentalPeriodKind: pricing.rentalPeriodKind === 'monthly' ? 'MONTHLY' : 'DAILY',
           termsAccepted: dto.termsAccepted ?? true,
           addonsJson: JSON.stringify(addons),
           paymentMethod: dto.paymentMethodId?.toUpperCase() ?? null,

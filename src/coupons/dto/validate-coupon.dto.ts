@@ -42,4 +42,8 @@ export class ValidateCouponDto {
   @Type(() => Number)
   @IsNumber()
   deliveryLng?: number;
+
+  @IsOptional()
+  @IsIn(['daily', 'monthly'])
+  rentalPeriodKind?: 'daily' | 'monthly';
 }

@@ -169,6 +169,7 @@ export class FleetService {
       fuel: string;
       image: string | null;
       minPricePerDayExclTax: number | null;
+      minPriceMonthlyExclTax: number | null;
       vatRatePercent: number;
       Brand: { name: string; nameEn: string | null };
       FleetCategory: { slug: string; title: string };
@@ -192,6 +193,7 @@ export class FleetService {
       transmissionLabel: TRANSMISSION_LABELS[row.CarModel.transmission] ?? row.CarModel.transmission,
       image: row.CarModel.image,
       pricePerDay: row.pricePerDayExclTax ?? row.CarModel.minPricePerDayExclTax ?? null,
+      priceMonthly: row.priceMonthlyExclTax ?? row.CarModel.minPriceMonthlyExclTax ?? null,
       vatRatePercent: row.CarModel.vatRatePercent,
       branch: { id: row.Branch.id, name: row.Branch.name, slug: row.Branch.slug },
       quantityAvailable: row.quantity,

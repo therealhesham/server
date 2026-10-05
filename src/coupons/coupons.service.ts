@@ -70,6 +70,12 @@ export class CouponsService {
   }
 
   async validate(userId: number, dto: ValidateCouponDto) {
+    // Coupon discount math only models per-day/flat daily-subtotal rentals —
+    // see the same guard in BookingsService.createBooking.
+    if (dto.rentalPeriodKind === 'monthly') {
+      throw new BadRequestException('أكواد الخصم غير متاحة حالياً للحجز الشهري.');
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('الجلسة غير صالحة.');
     if (!user.phone) throw new BadRequestException('رقم جوالك غير مسجّل على الحساب.');
@@ -84,6 +90,7 @@ export class CouponsService {
       deliveryBranchId: dto.deliveryBranchId,
       deliveryLat: dto.deliveryLat,
       deliveryLng: dto.deliveryLng,
+      rentalPeriodKind: dto.rentalPeriodKind,
     };
     const pricing = await computeBookingPricing(this.prisma as unknown as PrismaClient, pricingInput);
     const coupon = await this.resolveCoupon(dto.code, user.phone);

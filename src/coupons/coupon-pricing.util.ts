@@ -1,10 +1,11 @@
 import { round2 } from '../bookings/pricing.util';
 
-// Mirrors rentcar's lib/coupon-code.ts discount math exactly. This app has
-// no distinct "monthly flat-rate" booking (see the weekly/monthly period
-// work — pricing is always dailyRate × days regardless of period), so every
-// booking here is treated as the "DAILY" period for appliesTo purposes; a
-// MONTHLY_ONLY coupon simply never matches anything in this app.
+// Mirrors rentcar's lib/coupon-code.ts discount math exactly. This math only
+// models a per-day/flat daily-subtotal rental; monthly bookings (flat
+// priceMonthlyExclTax, see pricing.util.ts) are blocked from using coupons
+// entirely (BookingsService.createBooking / CouponsService.validate) rather
+// than guessed at, so every coupon here is still treated as the "DAILY"
+// period for appliesTo purposes — a MONTHLY_ONLY coupon never matches.
 export type CouponKind = 'PERCENT' | 'FIXED';
 export type CouponScope = 'RENTAL_ONLY' | 'FULL_TOTAL';
 export type CouponAppliesTo = 'DAILY_ONLY' | 'MONTHLY_ONLY' | 'DAILY_AND_MONTHLY';

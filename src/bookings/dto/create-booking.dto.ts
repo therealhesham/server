@@ -124,4 +124,11 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   couponCode?: string;
+
+  // 'monthly' charges the car's flat priceMonthlyExclTax instead of
+  // pricePerDayExclTax × numberOfDays — see pricing.util.ts. Omitted/'daily'
+  // keeps the existing per-day billing.
+  @IsOptional()
+  @IsIn(['daily', 'monthly'])
+  rentalPeriodKind?: 'daily' | 'monthly';
 }

@@ -35,6 +35,9 @@ export interface PricingInput {
   deliveryBranchId?: number;
   deliveryLat?: number;
   deliveryLng?: number;
+  // 'monthly' bills the car's flat monthly rate instead of dailyRate × days —
+  // see the subtotal branch below. Omitted/'daily' keeps the old behavior.
+  rentalPeriodKind?: 'daily' | 'monthly';
 }
 
 export interface PricingResult {
@@ -43,6 +46,7 @@ export interface PricingResult {
   returnAt: Date;
   numberOfDays: number;
   dailyRate: number;
+  rentalPeriodKind: 'daily' | 'monthly';
   addons: { id: number; slug: string; title: string; pricePerDay: number }[];
   extrasTotal: number;
   deliveryFee: number;
@@ -71,7 +75,17 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
     where: { modelId_branchId: { modelId: input.carModelId, branchId: input.returnBranchId } },
   });
   const dailyRate = fleetRow?.pricePerDayExclTax ?? carModel.minPricePerDayExclTax ?? carModel.price;
-  if (!dailyRate) throw new BadRequestException('تعذّر تحديد سعر السيارة في هذا الفرع.');
+  const rentalPeriodKind = input.rentalPeriodKind === 'monthly' ? 'monthly' : 'daily';
+
+  let subtotal: number;
+  if (rentalPeriodKind === 'monthly') {
+    const monthlyRate = fleetRow?.priceMonthlyExclTax ?? carModel.minPriceMonthlyExclTax ?? null;
+    if (!monthlyRate) throw new BadRequestException('لا يتوفر سعر شهري لهذه السيارة في هذا الفرع.');
+    subtotal = monthlyRate;
+  } else {
+    if (!dailyRate) throw new BadRequestException('تعذّر تحديد سعر السيارة في هذا الفرع.');
+    subtotal = dailyRate * numberOfDays;
+  }
 
   let addons: { id: number; slug: string; title: string; pricePerDay: number }[] = [];
   if (input.addonIds?.length) {
@@ -95,7 +109,6 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
     deliveryFee = round2(distanceKm * servicingBranch.deliveryFeePerKmSar);
   }
 
-  const subtotal = dailyRate * numberOfDays;
   const extrasTotal = addons.reduce((sum, a) => sum + a.pricePerDay, 0) * numberOfDays;
   const preVat = subtotal + extrasTotal + deliveryFee;
 
@@ -105,6 +118,7 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
     returnAt,
     numberOfDays,
     dailyRate,
+    rentalPeriodKind,
     addons,
     extrasTotal,
     deliveryFee,
