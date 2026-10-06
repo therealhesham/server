@@ -5,6 +5,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService, type ResolvedCoupon } from '../coupons/coupons.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { computeBookingPricing, round2 } from './pricing.util';
+import {
+  callRentcarInternal,
+  type CancelPreviewResponse,
+  type CancelResponse,
+  type InvoiceResponse,
+} from './rentcar-internal.util';
 
 // Non-blocking statuses mirror rentcar's NON_BLOCKING_BOOKING_STATUSES —
 // a cancelled/rejected/returned/completed booking no longer occupies the car.
@@ -79,20 +85,15 @@ export class BookingsService {
     const pricing = await computeBookingPricing(this.prisma as unknown as PrismaClient, dto);
     const { pickupAt, returnAt, numberOfDays, dailyRate, addons, deliveryFee } = pricing;
 
-    // Coupon discount math (coupon-pricing.util.ts) only models per-day/flat
-    // daily-subtotal rentals — applying it to a flat monthly charge would
-    // silently produce a wrong discount, so it's blocked here rather than
-    // guessed at.
-    if (dto.couponCode && pricing.rentalPeriodKind === 'monthly') {
-      throw new BadRequestException('أكواد الخصم غير متاحة حالياً للحجز الشهري.');
-    }
-
-    // Resolved (and re-validated) here so a coupon can never be applied
-    // twice or on a stale eligibility check between preview and commit.
+    // Resolved (and re-validated) here so a coupon can never be applied twice
+    // or on a stale eligibility check between preview and commit. Monthly
+    // bookings are no longer refused wholesale — `rentalPeriodKind` just gates
+    // the code's own DAILY_ONLY/MONTHLY_ONLY scope, same as rentcar's
+    // resolveCouponCode, and computeDiscount keeps the price above its floor.
     let coupon: ResolvedCoupon | null = null;
     let discountAmountSar = 0;
     if (dto.couponCode) {
-      coupon = await this.couponsService.resolveCoupon(dto.couponCode, user.phone);
+      coupon = await this.couponsService.resolveCoupon(dto.couponCode, user.phone, pricing.rentalPeriodKind);
       discountAmountSar = this.couponsService.computeDiscount(coupon, pricing);
     }
 
@@ -180,6 +181,35 @@ export class BookingsService {
     });
 
     return { ok: true, bookingRequestId, totalAmountSar: total, discountAmountSar };
+  }
+
+  /**
+   * الإلغاء والاسترداد منفَّذان في rentcar — بما فيهم شرائح الخصم ومهلة
+   * الإلغاء وتنفيذ الاسترداد وتسجيله في المعاملات المالية. ده بيتحقق من هوية
+   * العميل بتوكنه بس، ويمرّر رقمه. أي حساب للمبلغ هنا كان هيبقى نسخة تانية
+   * تفترق عن الموقع أول ما الإدارة تغيّر شريحة.
+   */
+  async cancelPreview(userId: number, bookingRequestId: number) {
+    return callRentcarInternal<CancelPreviewResponse>(
+      `/api/internal/bookings/${bookingRequestId}/cancel-preview`,
+      userId,
+    );
+  }
+
+  async cancel(userId: number, bookingRequestId: number) {
+    return callRentcarInternal<CancelResponse>(
+      `/api/internal/bookings/${bookingRequestId}/cancel`,
+      userId,
+    );
+  }
+
+  // تفصيل الفاتورة من لقطة السعر وقت الحجز — نفس مفسّر rentcar، فالتطبيق
+  // والموقع ما يعرضوش أرقاماً مختلفة لنفس الحجز.
+  async invoice(userId: number, bookingRequestId: number) {
+    return callRentcarInternal<InvoiceResponse>(
+      `/api/internal/bookings/${bookingRequestId}/invoice`,
+      userId,
+    );
   }
 
   async getMine(userId: number) {

@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+
 import { PrismaService } from '../prisma/prisma.service';
+import { getActiveRentalDiscounts, resolveBestPeriodDiscount } from '../bookings/rental-discount.util';
 import { ListCarsQueryDto } from './dto/list-cars-query.dto';
 
 const FUEL_LABELS: Record<string, string> = {
@@ -91,19 +94,40 @@ export class FleetService {
       },
     });
 
+    // الخصومات التلقائية تدخل في المقارنة قبل اختيار «الأرخص» — صف أغلى بخصم
+    // قوي ممكن يطلع أرخص فعلاً من صف أقل سعراً بلا خصم، زي rentcar's
+    // pickCheapestRowPerModel اللي بيقارن بـ rowEffectivePrice.
+    const rules = await getActiveRentalDiscounts(this.prisma as unknown as PrismaClient);
+    const effectiveDaily = (row: (typeof fleetRows)[number]) => {
+      const list = row.pricePerDayExclTax ?? row.CarModel.price;
+      const discount = resolveBestPeriodDiscount(
+        rules,
+        {
+          brandId: row.CarModel.brandId,
+          carModelId: row.modelId,
+          branchId: row.branchId,
+          periodKind: 'daily',
+          numberOfDays: 1,
+          priceFloor: {
+            minPricePerDayExclTax: row.minPricePerDayExclTax ?? row.CarModel.minPricePerDayExclTax,
+            minPriceMonthlyExclTax: row.minPriceMonthlyExclTax ?? row.CarModel.minPriceMonthlyExclTax,
+          },
+        },
+        list,
+      );
+      return discount?.discountedAmountExclTax ?? list;
+    };
+
     // Without a branch filter, the same CarModel can appear at several
     // branches — collapse to one card per model showing its cheapest price.
-    const byModel = new Map<number, (typeof fleetRows)[number]>();
+    const byModel = new Map<number, { row: (typeof fleetRows)[number]; price: number }>();
     for (const row of fleetRows) {
+      const price = effectiveDaily(row);
       const existing = byModel.get(row.modelId);
-      const rowPrice = row.pricePerDayExclTax ?? row.CarModel.minPricePerDayExclTax ?? Infinity;
-      const existingPrice = existing
-        ? existing.pricePerDayExclTax ?? existing.CarModel.minPricePerDayExclTax ?? Infinity
-        : Infinity;
-      if (!existing || rowPrice < existingPrice) byModel.set(row.modelId, row);
+      if (!existing || price < existing.price) byModel.set(row.modelId, { row, price });
     }
 
-    return [...byModel.values()].map((row) => this.toCarSummary(row));
+    return [...byModel.values()].map(({ row, price }) => this.toCarSummary(row, price));
   }
 
   async getCar(modelId: number, branchId?: number) {
@@ -122,6 +146,25 @@ export class FleetService {
     if (!carModel) throw new NotFoundException('Car model not found');
 
     const cheapestFleet = carModel.Fleet[0];
+    const listPricePerDay = cheapestFleet?.pricePerDayExclTax ?? carModel.price;
+
+    // نفس الخصم التلقائي المعروض في القائمة — لو صفحة التفاصيل عرضت سعر القائمة
+    // كان العميل هيشوف رقمين مختلفين لنفس السيارة.
+    const dailyDiscount = resolveBestPeriodDiscount(
+      await getActiveRentalDiscounts(this.prisma as unknown as PrismaClient),
+      {
+        brandId: carModel.brandId,
+        carModelId: carModel.id,
+        branchId: cheapestFleet?.branchId ?? branchId ?? null,
+        periodKind: 'daily',
+        numberOfDays: 1,
+        priceFloor: {
+          minPricePerDayExclTax: cheapestFleet?.minPricePerDayExclTax ?? carModel.minPricePerDayExclTax,
+          minPriceMonthlyExclTax: cheapestFleet?.minPriceMonthlyExclTax ?? carModel.minPriceMonthlyExclTax,
+        },
+      },
+      listPricePerDay,
+    );
 
     return {
       id: carModel.id,
@@ -139,8 +182,9 @@ export class FleetService {
       transmission: carModel.transmission,
       transmissionLabel: TRANSMISSION_LABELS[carModel.transmission] ?? carModel.transmission,
       image: carModel.image,
-      pricePerDay: cheapestFleet?.pricePerDayExclTax ?? carModel.minPricePerDayExclTax ?? null,
-      priceMonthly: cheapestFleet?.priceMonthlyExclTax ?? carModel.minPriceMonthlyExclTax ?? null,
+      pricePerDay: dailyDiscount?.discountedAmountExclTax ?? listPricePerDay,
+      originalPricePerDay: dailyDiscount ? listPricePerDay : null,
+      priceMonthly: cheapestFleet?.priceMonthlyExclTax ?? carModel.priceMonthlyExclTax ?? null,
       vatRatePercent: carModel.vatRatePercent,
       availability: carModel.Fleet.map((f) => ({
         branchId: f.branchId,
@@ -168,14 +212,20 @@ export class FleetService {
       transmission: string;
       fuel: string;
       image: string | null;
-      minPricePerDayExclTax: number | null;
-      minPriceMonthlyExclTax: number | null;
+      price: number;
+      priceMonthlyExclTax: number | null;
       vatRatePercent: number;
       Brand: { name: string; nameEn: string | null };
       FleetCategory: { slug: string; title: string };
     };
     Branch: { id: number; name: string; slug: string };
-  }) {
+  },
+  /** السعر اليومي بعد الخصم التلقائي — يسقط على سعر القائمة لو مفيش خصم. */
+  effectivePricePerDay?: number,
+  ) {
+    // `CarModel.min*` أرضية سعر وليست سعراً — البديل الصحيح هو سعر الموديل
+    // نفسه، مطابقاً لـ rentcar's resolveBranchBasePriceForModel.
+    const listPricePerDay = row.pricePerDayExclTax ?? row.CarModel.price;
     return {
       id: row.CarModel.id,
       fleetId: row.id,
@@ -192,8 +242,12 @@ export class FleetService {
       transmission: row.CarModel.transmission,
       transmissionLabel: TRANSMISSION_LABELS[row.CarModel.transmission] ?? row.CarModel.transmission,
       image: row.CarModel.image,
-      pricePerDay: row.pricePerDayExclTax ?? row.CarModel.minPricePerDayExclTax ?? null,
-      priceMonthly: row.priceMonthlyExclTax ?? row.CarModel.minPriceMonthlyExclTax ?? null,
+      pricePerDay: effectivePricePerDay ?? listPricePerDay,
+      // سعر القائمة قبل الخصم التلقائي — null لما مفيش خصم، فالواجهة ما تعرضش
+      // شطباً على سعر مطابق.
+      originalPricePerDay:
+        effectivePricePerDay != null && effectivePricePerDay < listPricePerDay ? listPricePerDay : null,
+      priceMonthly: row.priceMonthlyExclTax ?? row.CarModel.priceMonthlyExclTax ?? null,
       vatRatePercent: row.CarModel.vatRatePercent,
       branch: { id: row.Branch.id, name: row.Branch.name, slug: row.Branch.slug },
       quantityAvailable: row.quantity,

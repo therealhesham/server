@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
 
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUserId } from '../auth/current-user.decorator';
@@ -19,5 +19,24 @@ export class BookingsController {
   @UseGuards(AuthGuard)
   getMine(@CurrentUserId() userId: number) {
     return this.bookingsService.getMine(userId);
+  }
+
+  // كام هيترد لو ألغى — يُعرض في رسالة التأكيد قبل التنفيذ.
+  @Get(':id/cancel-preview')
+  @UseGuards(AuthGuard)
+  cancelPreview(@CurrentUserId() userId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.bookingsService.cancelPreview(userId, id);
+  }
+
+  @Post(':id/cancel')
+  @UseGuards(AuthGuard)
+  cancel(@CurrentUserId() userId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.bookingsService.cancel(userId, id);
+  }
+
+  @Get(':id/invoice')
+  @UseGuards(AuthGuard)
+  invoice(@CurrentUserId() userId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.bookingsService.invoice(userId, id);
   }
 }

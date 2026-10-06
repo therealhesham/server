@@ -410,6 +410,31 @@ model CouponRedemption {
   @@index([customerPhone])
 }
 
+/// كود خصم مخصَّص لعميل واحد بعينه (مطابقة بالكود + رقم الجوال معاً) —
+/// يُستهلك مرة واحدة فقط عبر `isUsed`، ومن غير صف في `CouponRedemption`
+/// لأن مفتاحها الأجنبي يشير إلى `CouponCode` وحدها.
+model CustomizedCoupon {
+  id                     Int                    @id @default(autoincrement())
+  code                   String                 @db.VarChar(32)
+  customerPhone          String                 @db.VarChar(20)
+  kind                   CustomizedCoupon_kind
+  value                  Int
+  scope                  CustomizedCoupon_scope
+  endsAt                 DateTime?
+  isActive               Boolean                @default(true)
+  isUsed                 Boolean                @default(false)
+  usedAt                 DateTime?
+  usedByBookingRequestId Int?
+  createdByEmployeeId    Int?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime
+  canBypassMinPrice      Boolean                @default(false)
+
+  @@unique([code, customerPhone])
+  @@index([customerPhone])
+  @@index([isActive])
+}
+
 model CustomerLoginOtp {
   id             Int      @id @default(autoincrement())
   destinationKey String   @unique @db.VarChar(320)
@@ -817,6 +842,16 @@ enum UserSubscription_status {
 }
 
 enum CouponCode_scope {
+  RENTAL_ONLY
+  FULL_TOTAL
+}
+
+enum CustomizedCoupon_kind {
+  PERCENT
+  FIXED
+}
+
+enum CustomizedCoupon_scope {
   RENTAL_ONLY
   FULL_TOTAL
 }
