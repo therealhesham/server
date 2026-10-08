@@ -6,3 +6,4 @@ dist
 .env.example
 prisma/sql/2026-10-08-push-notifications.sql
 scripts/send-push.js
+prisma/sql/2026-10-08-anonymous-push-devices.sql

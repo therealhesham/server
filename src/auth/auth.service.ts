@@ -296,11 +296,43 @@ export class AuthService {
   }
 
   /**
-   * الحذف مقيّد بالمستخدم الحالي: من غير القيد دي، أي حساب يقدر يفك ربط جهاز
-   * حساب تاني لو عرف توكنه ويمنع عنه الإشعارات.
+   * تسجيل جهاز قبل تسجيل الدخول — عشان نقدر نبعتله عروض. مفيش مصادقة هنا
+   * بطبيعة الحال، فالحماية في حتتين: صيغة التوكن متحقَّق منها في الـ DTO،
+   * والمسار عليه حد معدّل في الكنترولر.
+   *
+   * مهم: `userId` بيتساب زي ما هو لو الصف موجود — عشان جهاز صاحبه مسجّل دخول
+   * ما يترجعش مجهول لمجرد إن التطبيق اتفتح تاني.
+   */
+  async registerAnonymousPushToken(expoPushToken: string, platform?: string): Promise<{ ok: true }> {
+    const now = new Date();
+    await this.prisma.pushDevice.upsert({
+      where: { token: expoPushToken },
+      create: {
+        userId: null,
+        token: expoPushToken,
+        platform: platform ?? 'unknown',
+        createdAt: now,
+        lastSeenAt: now,
+      },
+      update: {
+        ...(platform ? { platform } : {}),
+        lastSeenAt: now,
+      },
+    });
+    return { ok: true };
+  }
+
+  /**
+   * الخروج بيفك الربط ولا بيحذف: الجهاز يفضل مسجّل كمجهول فيوصله العروض،
+   * ومايوصلهوش إشعارات حجوزات الحساب اللي خرج منه.
+   * مقيّد بالمستخدم الحالي — من غير القيد ده أي حساب يعرف توكن جهاز تاني
+   * يقدر يفصله عن صاحبه.
    */
   async removePushToken(userId: number, expoPushToken: string): Promise<{ ok: true }> {
-    await this.prisma.pushDevice.deleteMany({ where: { token: expoPushToken, userId } });
+    await this.prisma.pushDevice.updateMany({
+      where: { token: expoPushToken, userId },
+      data: { userId: null, lastSeenAt: new Date() },
+    });
     return { ok: true };
   }
 

@@ -633,7 +633,9 @@ model NotificationPreference {
 
 model PushDevice {
   id         Int      @id @default(autoincrement())
-  userId     Int
+  /// فارغ = جهاز نزّل التطبيق ولم يسجّل دخولاً بعد. نسجّله لنتمكّن من مخاطبته
+  /// بالعروض، ويُربط بالحساب تلقائياً أول مرة يسجّل صاحبه الدخول.
+  userId     Int?
   token      String   @unique @db.VarChar(255)
   platform   String   @db.VarChar(16)
   createdAt  DateTime @default(now())
