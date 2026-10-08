@@ -3,7 +3,6 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService, type ResolvedCoupon } from '../coupons/coupons.service';
-import { ExpoPushService } from '../notifications/expo-push.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { computeBookingPricing, round2 } from './pricing.util';
 import {
@@ -39,7 +38,6 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly couponsService: CouponsService,
-    private readonly push: ExpoPushService,
   ) {}
 
   private async sumFleetQuantity(
@@ -198,24 +196,15 @@ export class BookingsService {
     );
   }
 
+  // بدون إشعار هنا عن قصد: الإلغاء كله ينفَّذ في rentcar داخل
+  // cancelBookingWithPolicy، وهي اللي بتبعت الإشعار — فبتغطي الإلغاء من
+  // التطبيق والموقع ولوحة الإدارة بنفس الكود. إضافة إشعار هنا كانت هتبعت
+  // اتنين لنفس الإلغاء.
   async cancel(userId: number, bookingRequestId: number) {
-    const result = await callRentcarInternal<CancelResponse>(
+    return callRentcarInternal<CancelResponse>(
       `/api/internal/bookings/${bookingRequestId}/cancel`,
       userId,
     );
-
-    // الإلغاء ممكن يتم من الموقع أو من الإدارة كمان، فالإشعار هنا بيغطي
-    // مسار التطبيق بس — تغطية المسارات التانية محلها rentcar نفسه.
-    await this.push.sendToUser(userId, {
-      title: 'تم إلغاء حجزك',
-      body:
-        result.refundInclTaxSar > 0
-          ? `حجز رقم ${bookingRequestId} اتلغى، وهيترد لك ${result.refundInclTaxSar.toLocaleString('ar-SA')} ر.س.`
-          : `حجز رقم ${bookingRequestId} اتلغى. لم يُستحق مبلغ للرد وفق سياسة الإلغاء.`,
-      data: { bookingId: bookingRequestId },
-    });
-
-    return result;
   }
 
   // تفصيل الفاتورة من لقطة السعر وقت الحجز — نفس مفسّر rentcar، فالتطبيق

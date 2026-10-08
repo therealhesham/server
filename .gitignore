@@ -5,3 +5,4 @@ dist
 .env
 .env.example
 prisma/sql/2026-10-08-push-notifications.sql
+scripts/send-push.js
