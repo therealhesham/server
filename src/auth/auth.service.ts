@@ -270,6 +270,40 @@ export class AuthService {
     return { bookingUpdates: row.bookingUpdates, promotions: row.promotions };
   }
 
+  /**
+   * التوكن مفتاح فريد عالمياً مش لكل مستخدم: لو نفس الموبايل سجّل عليه حساب
+   * تاني، الصف بينتقل للحساب الجديد بدل ما يتعمل صف تاني — وإلا الجهاز يفضل
+   * مربوط بالحسابين ويستقبل إشعارات حجوزات مش بتاعة اللي داخل دلوقتي.
+   */
+  async registerPushToken(userId: number, expoPushToken: string, platform?: string): Promise<{ ok: true }> {
+    const now = new Date();
+    await this.prisma.pushDevice.upsert({
+      where: { token: expoPushToken },
+      create: {
+        userId,
+        token: expoPushToken,
+        platform: platform ?? 'unknown',
+        createdAt: now,
+        lastSeenAt: now,
+      },
+      update: {
+        userId,
+        ...(platform ? { platform } : {}),
+        lastSeenAt: now,
+      },
+    });
+    return { ok: true };
+  }
+
+  /**
+   * الحذف مقيّد بالمستخدم الحالي: من غير القيد دي، أي حساب يقدر يفك ربط جهاز
+   * حساب تاني لو عرف توكنه ويمنع عنه الإشعارات.
+   */
+  async removePushToken(userId: number, expoPushToken: string): Promise<{ ok: true }> {
+    await this.prisma.pushDevice.deleteMany({ where: { token: expoPushToken, userId } });
+    return { ok: true };
+  }
+
   resolveUserIdFromToken(token: string): number {
     const uid = verifySessionToken(token);
     if (!uid) throw new UnauthorizedException('الجلسة غير صالحة أو منتهية.');

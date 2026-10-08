@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { ExpoPushService } from '../notifications/expo-push.service';
 import { GeideaOrder, GeideaService } from './geidea.service';
 
 // Matches merchantReferenceId built as `booking-{id}-{timestamp}` in
@@ -29,6 +30,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly geidea: GeideaService,
+    private readonly push: ExpoPushService,
   ) {}
 
   async createSession(userId: number, bookingRequestId: number) {
@@ -89,6 +91,23 @@ export class PaymentsService {
       });
       return true;
     });
+
+    // الإشعار بعد المعاملة، مش جوّاها: نداء شبكة خارجي جوّه transaction
+    // بيقفل صفوف الحجز طول مدة الطلب. و`updated` بيضمن إرسال مرة واحدة —
+    // الـ webhook والـ reconcile الاتنين بينادوا الدالة دي لنفس الحجز.
+    if (updated) {
+      const booking = await this.prisma.bookingRequest.findUnique({
+        where: { id: bookingId },
+        select: { customerId: true },
+      });
+      if (booking?.customerId) {
+        await this.push.sendToUser(booking.customerId, {
+          title: 'تم استلام الدفع',
+          body: `استلمنا مبلغ ${order.amount.toLocaleString('ar-SA')} ر.س. حجزك رقم ${bookingId} قيد التأكيد.`,
+          data: { bookingId },
+        });
+      }
+    }
 
     return updated;
   }

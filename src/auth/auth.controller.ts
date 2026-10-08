@@ -8,6 +8,7 @@ import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
+import { RegisterPushTokenDto, RemovePushTokenDto } from './dto/push-token.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -47,5 +48,17 @@ export class AuthController {
   @UseGuards(AuthGuard)
   updateNotificationPreferences(@CurrentUserId() userId: number, @Body() dto: UpdateNotificationPreferencesDto) {
     return this.authService.updateNotificationPreferences(userId, dto);
+  }
+
+  @Post('push-token')
+  @UseGuards(AuthGuard)
+  registerPushToken(@CurrentUserId() userId: number, @Body() dto: RegisterPushTokenDto) {
+    return this.authService.registerPushToken(userId, dto.expoPushToken, dto.platform);
+  }
+
+  @Post('push-token/remove')
+  @UseGuards(AuthGuard)
+  removePushToken(@CurrentUserId() userId: number, @Body() dto: RemovePushTokenDto) {
+    return this.authService.removePushToken(userId, dto.expoPushToken);
   }
 }

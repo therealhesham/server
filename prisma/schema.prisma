@@ -630,6 +630,18 @@ model NotificationPreference {
   updatedAt      DateTime @default(now())
 }
 
+
+model PushDevice {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  token      String   @unique @db.VarChar(255)
+  platform   String   @db.VarChar(16)
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model SubscriptionDocument {
   id                  Int                       @id @default(autoincrement())
   subscriptionId      Int
