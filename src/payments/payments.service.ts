@@ -33,7 +33,7 @@ export class PaymentsService {
     private readonly push: ExpoPushService,
   ) {}
 
-  async createSession(userId: number, bookingRequestId: number) {
+  async createSession(userId: number, bookingRequestId: number, redirectUrl?: string) {
     if (!this.geidea.isConfigured()) {
       throw new BadRequestException('بوابة الدفع غير مهيأة على الخادم.');
     }
@@ -46,7 +46,7 @@ export class PaymentsService {
     const amountSar = booking.snapshotTotalAmountSar;
     if (!amountSar || amountSar <= 0) throw new BadRequestException('تعذّر تحديد مبلغ الحجز.');
 
-    const session = await this.geidea.createCheckoutSession({ bookingRequestId, amountSar });
+    const session = await this.geidea.createCheckoutSession({ bookingRequestId, amountSar, redirectUrl });
 
     await this.prisma.bookingRequest.update({
       where: { id: bookingRequestId },

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -41,6 +41,8 @@ function normalizeConfig(raw: unknown): WhatsAppOtpConfig {
 
 @Injectable()
 export class EvolutionWhatsAppService {
+  private readonly logger = new Logger(EvolutionWhatsAppService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   private async getConfig(): Promise<WhatsAppOtpConfig> {
@@ -52,6 +54,9 @@ export class EvolutionWhatsAppService {
     try {
       return normalizeConfig(JSON.parse(row.value));
     } catch {
+      // Treated as "disabled", so every login would fail with a misleading
+      // "not enabled" message — the log says the row itself is corrupt.
+      this.logger.warn({ msg: `MobileAppSetting ${MOBILE_APP_KEY_WHATSAPP_OTP_CONFIG} holds invalid JSON; WhatsApp OTP treated as disabled` });
       return EMPTY_CONFIG;
     }
   }

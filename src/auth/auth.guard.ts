@@ -9,13 +9,16 @@ import { AuthService } from './auth.service';
 export class AuthGuard implements CanActivate {
   constructor(private readonly authService: AuthService) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const header = String(request.headers['authorization'] ?? '');
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
     if (!token) throw new UnauthorizedException('مطلوب تسجيل الدخول.');
 
-    request.userId = this.authService.resolveUserIdFromToken(token);
+    const userId = this.authService.resolveUserIdFromToken(token);
+    // A signed token outlives account deletion, so check the account is still live.
+    await this.authService.assertAccountActive(userId);
+    request.userId = userId;
     return true;
   }
 }

@@ -390,6 +390,8 @@ model CouponCode {
   updatedAt           DateTime
   appliesTo           CouponCode_appliesTo @default(DAILY_ONLY)
   canBypassMinPrice   Boolean              @default(false)
+  isMobileOnly        Boolean              @default(false)
+  isWebOnly           Boolean              @default(false)
   CouponRedemption    CouponRedemption[]
 
   @@index([isActive])

@@ -12,6 +12,8 @@ import { PaymentsModule } from './payments/payments.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlacesModule } from './places/places.module';
+import { ContactModule } from './contact/contact.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { PlacesModule } from './places/places.module';
     CouponsModule,
     NotificationsModule,
     PlacesModule,
+    ContactModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

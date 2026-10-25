@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 import { AuthService } from './auth.service';
@@ -6,6 +6,8 @@ import { AuthGuard } from './auth.guard';
 import { CurrentUserId } from './current-user.decorator';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { SendChangePhoneOtpDto, VerifyChangePhoneDto } from './dto/change-phone.dto';
+import { BookingKycDto } from '../bookings/dto/create-booking.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 import { RegisterPushTokenDto, RemovePushTokenDto } from './dto/push-token.dto';
@@ -36,6 +38,35 @@ export class AuthController {
   @UseGuards(AuthGuard)
   updateMe(@CurrentUserId() userId: number, @Body() dto: UpdateProfileDto) {
     return this.authService.updateProfile(userId, dto);
+  }
+
+  @Patch('me/kyc')
+  @UseGuards(AuthGuard)
+  updateMyKyc(@CurrentUserId() userId: number, @Body() dto: BookingKycDto) {
+    return this.authService.updateKyc(userId, dto);
+  }
+
+  // Irreversible: the app asks for confirmation first. See AuthService.deleteAccount
+  // for what is erased and what is kept.
+  @Delete('me')
+  @UseGuards(AuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  deleteMe(@CurrentUserId() userId: number) {
+    return this.authService.deleteAccount(userId);
+  }
+
+  @Post('change-phone/send-otp')
+  @UseGuards(AuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  sendChangePhoneOtp(@CurrentUserId() userId: number, @Body() dto: SendChangePhoneOtpDto) {
+    return this.authService.sendChangePhoneOtp(userId, dto.phone);
+  }
+
+  @Post('change-phone/verify')
+  @UseGuards(AuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  verifyChangePhone(@CurrentUserId() userId: number, @Body() dto: VerifyChangePhoneDto) {
+    return this.authService.verifyChangePhone(userId, dto.phone, dto.otp);
   }
 
   @Get('notification-preferences')

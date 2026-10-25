@@ -80,6 +80,8 @@ export class CouponsService {
     const row = await this.prisma.couponCode.findUnique({ where: { code } });
     if (!row) throw new BadRequestException('كود الخصم غير صحيح.');
     if (!row.isActive) throw new BadRequestException('كود الخصم غير مُفعَّل حالياً.');
+    // مقصور على الموقع الإلكتروني — هذا السيرفر يخدم تطبيق الجوال فقط فيرفضه دائماً.
+    if (row.isWebOnly) throw new BadRequestException('هذا الكود متاح فقط عبر الموقع الإلكتروني.');
     if (row.startsAt && now.getTime() < row.startsAt.getTime()) {
       throw new BadRequestException('كود الخصم لم تبدأ صلاحيته بعد.');
     }

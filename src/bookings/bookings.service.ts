@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService, type ResolvedCoupon } from '../coupons/coupons.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { computeBookingPricing, round2 } from './pricing.util';
+import { validateKyc } from './kyc-validation.util';
+import { isWithinBranchHours } from './branch-hours.util';
 import {
   callRentcarInternal,
   type CancelPreviewResponse,
@@ -101,10 +103,31 @@ export class BookingsService {
     const vat = round2(discountedPreVat * (pricing.carModel.vatRatePercent / 100));
     const total = round2(discountedPreVat + vat);
 
+    const kycCheck = validateKyc(dto.kyc);
+    if (!kycCheck.valid) {
+      throw new BadRequestException(kycCheck.error);
+    }
+
     const idDocumentKind = ID_KIND_TO_DOCUMENT_KIND[dto.kyc.idKind];
     const licenseExpiryDate = new Date(dto.kyc.licenseExpiryIso);
     if (Number.isNaN(licenseExpiryDate.getTime())) {
       throw new BadRequestException('تاريخ انتهاء الرخصة غير صالح.');
+    }
+    if (licenseExpiryDate.getTime() < returnAt.getTime()) {
+      throw new BadRequestException('رخصة القيادة ستكون منتهية الصلاحية قبل موعد إرجاع السيارة.');
+    }
+
+    // Branch mode picks up at pickupBranchId (falling back to returnBranchId,
+    // same fallback the create() call below uses); delivery dispatches from
+    // deliveryBranchId, guaranteed set here since computeBookingPricing above
+    // already required it for pickupMode 'delivery'.
+    const hoursBranchId = dto.pickupMode === 'branch' ? dto.pickupBranchId ?? dto.returnBranchId : dto.deliveryBranchId!;
+    const hoursBranch = await this.prisma.branch.findUnique({
+      where: { id: hoursBranchId },
+      select: { openingHoursJson: true },
+    });
+    if (isWithinBranchHours(hoursBranch?.openingHoursJson, pickupAt) === false) {
+      throw new BadRequestException('موعد الاستلام خارج ساعات عمل الفرع.');
     }
 
     const fleetUnits = await this.sumFleetQuantity(dto.carModelId, dto.returnBranchId);

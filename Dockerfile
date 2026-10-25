@@ -40,4 +40,9 @@ USER nestjs
 EXPOSE 3210
 ENV PORT=3210
 
+# Liveness only (no database): a transient DB blip must not get the container
+# restarted — PrismaService already retries those. start-period covers the Prisma
+# connect retries on boot. Uses node's built-in fetch, so it needs no extra tools.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
 CMD ["node", "dist/main.js"]

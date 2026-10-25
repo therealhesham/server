@@ -6,7 +6,11 @@
  * كده الـ API ده بيتحقق من هوية العميل بتوكنه، ويمرّر رقمه لـ rentcar بسرّ
  * بين الخوادم.
  */
-import { HttpException, InternalServerErrorException } from '@nestjs/common';
+import { HttpException, InternalServerErrorException, Logger } from '@nestjs/common';
+
+import { errorReason } from '../common/logger/error-reason';
+
+const logger = new Logger('RentcarInternal');
 
 const INTERNAL_AUTH_HEADER = 'x-internal-secret';
 const TIMEOUT_MS = 20_000;
@@ -38,7 +42,14 @@ export async function callRentcarInternal<T>(path: string, customerId: number): 
       body: JSON.stringify({ customerId }),
       signal: controller.signal,
     });
-  } catch {
+  } catch (e) {
+    logger.error({
+      msg: 'rentcar internal API unreachable',
+      path,
+      customerId,
+      timedOut: controller.signal.aborted,
+      reason: errorReason(e),
+    });
     throw new HttpException('تعذّر الوصول لخدمة الإلغاء. حاول مرة أخرى.', 502);
   } finally {
     clearTimeout(timer);
@@ -49,6 +60,17 @@ export async function callRentcarInternal<T>(path: string, customerId: number): 
     // رسائل السياسة العربية بتتمرّر للعميل زي ما هي عشان تطابق نص الموقع.
     // أما أخطاء الإعداد (401/503) فبتتحوّل لرسالة عامة — مش شأن العميل.
     const isPolicyError = res.status === 400 || res.status === 404;
+    // Policy refusals are normal; anything else (401 = wrong secret, 5xx) is an
+    // integration fault the customer never sees, so it has to be logged here.
+    if (!isPolicyError) {
+      logger.error({
+        msg: 'rentcar internal API returned an error',
+        path,
+        customerId,
+        status: res.status,
+        error: typeof body.error === 'string' ? body.error.slice(0, 200) : undefined,
+      });
+    }
     throw new HttpException(
       isPolicyError && body.error ? body.error : 'تعذّر تنفيذ الطلب. حاول مرة أخرى.',
       isPolicyError ? res.status : 502,

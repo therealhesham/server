@@ -86,7 +86,12 @@ export class GeideaService {
 
   // Amount always comes from the booking's own server-side price snapshot in
   // PaymentsService, never from the client — same rule rentcar's checkout enforces.
-  async createCheckoutSession(args: { bookingRequestId: number; amountSar: number; language?: 'ar' | 'en' }): Promise<GeideaSession> {
+  async createCheckoutSession(args: {
+    bookingRequestId: number;
+    amountSar: number;
+    language?: 'ar' | 'en';
+    redirectUrl?: string;
+  }): Promise<GeideaSession> {
     const cfg = this.getConfig();
     if (!cfg) throw new Error('Geidea غير مهيأة — أضف مفاتيح البيئة.');
 
@@ -117,7 +122,13 @@ export class GeideaService {
         // never reopens the app. Both optional only because local/non-HTTPS
         // dev environments can't receive either callback anyway.
         ...(cfg.callbackUrl ? { callbackUrl: cfg.callbackUrl } : {}),
-        ...(cfg.publicUrl ? { returnUrl: `${cfg.publicUrl}/payments/geidea/return` } : {}),
+        ...(cfg.publicUrl
+          ? {
+              returnUrl: args.redirectUrl
+                ? `${cfg.publicUrl}/payments/geidea/return?redirect=${encodeURIComponent(args.redirectUrl)}`
+                : `${cfg.publicUrl}/payments/geidea/return`,
+            }
+          : {}),
       },
     });
 

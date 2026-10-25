@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+
+import { errorReason } from '../common/logger/error-reason';
 
 export interface PlaceSuggestion {
   placeId: string;
@@ -19,6 +21,8 @@ const REQUEST_TIMEOUT_MS = 8_000;
 // ترفض الطلب لأن قيد Android بيشتغل فقط مع مكتبات Android الأصلية.
 @Injectable()
 export class PlacesService {
+  private readonly logger = new Logger(PlacesService.name);
+
   private apiKey(): string | null {
     return process.env.GOOGLE_PLACES_API_KEY?.trim() || null;
   }
@@ -53,7 +57,11 @@ export class PlacesService {
           includedRegionCodes: ['sa'],
         }),
       });
-      if (!res.ok) return [];
+      if (!res.ok) {
+        // A restricted/invalid key (see the comment above) shows up only here.
+        this.logger.warn({ msg: 'Places autocomplete rejected', status: res.status });
+        return [];
+      }
       const data = (await res.json()) as {
         suggestions?: { placePrediction?: { placeId?: string; text?: { text?: string } } }[];
       };
@@ -61,7 +69,8 @@ export class PlacesService {
         .map((s) => s.placePrediction)
         .filter((p): p is { placeId: string; text?: { text?: string } } => Boolean(p?.placeId))
         .map((p) => ({ placeId: p.placeId, text: p.text?.text ?? '' }));
-    } catch {
+    } catch (e) {
+      this.logger.warn({ msg: 'Places autocomplete failed', reason: errorReason(e) });
       return [];
     }
   }
@@ -80,7 +89,10 @@ export class PlacesService {
           },
         },
       );
-      if (!res.ok) return null;
+      if (!res.ok) {
+        this.logger.warn({ msg: 'Places details rejected', status: res.status });
+        return null;
+      }
       const data = (await res.json()) as {
         location?: { latitude?: number; longitude?: number };
         formattedAddress?: string;
@@ -92,7 +104,8 @@ export class PlacesService {
         longitude: data.location.longitude,
         address: data.formattedAddress ?? data.displayName?.text ?? '',
       };
-    } catch {
+    } catch (e) {
+      this.logger.warn({ msg: 'Places details failed', reason: errorReason(e) });
       return null;
     }
   }

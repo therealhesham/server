@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -260,6 +260,7 @@ function safeParseJson(raw: string | null): unknown {
   try {
     return JSON.parse(raw);
   } catch {
+    new Logger('Fleet').warn({ msg: 'Branch openingHoursJson is invalid JSON; hours omitted', sample: raw.slice(0, 80) });
     return null;
   }
 }
