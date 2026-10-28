@@ -87,6 +87,21 @@ export class EvolutionWhatsAppService {
         const errBody = await res.text().catch(() => '');
         throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 500)}`);
       }
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith('HTTP ')) throw e;
+      let host = 'invalid-url';
+      try {
+        host = new URL(base).host;
+      } catch {
+        /* apiBaseUrl failed URL parse — keep invalid-url */
+      }
+      const code =
+        e && typeof e === 'object' && 'cause' in e && e.cause && typeof e.cause === 'object' && 'code' in e.cause
+          ? String((e.cause as { code?: string }).code ?? '')
+          : '';
+      const aborted = e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError');
+      if (aborted) throw new Error(`Evolution timeout (${host})`);
+      throw new Error(`fetch failed (${host}${code ? ` ${code}` : ''})`);
     } finally {
       clearTimeout(timeout);
     }
