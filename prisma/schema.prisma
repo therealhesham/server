@@ -633,6 +633,21 @@ model NotificationPreference {
 }
 
 
+/// صندوق إشعارات العميل داخل التطبيق (أيقونة الجرس). كل إشعار push خاص بحجز
+/// بيتسجَّل هنا كمان، عشان العميل يلاقيه بعد ما يفوّته أو يقفل الإشعار.
+/// بيكتب فيه السيرفر ولوحة الإدارة (rentcar) على نفس الجدول.
+model CustomerNotification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String   @db.VarChar(255)
+  body      String   @db.Text
+  bookingId Int?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt])
+}
+
 model PushDevice {
   id         Int      @id @default(autoincrement())
   /// فارغ = جهاز نزّل التطبيق ولم يسجّل دخولاً بعد. نسجّله لنتمكّن من مخاطبته

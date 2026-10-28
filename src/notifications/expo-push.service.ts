@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from './notifications.service';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 // Expo بتقبل ١٠٠ رسالة كحد أقصى في الطلب الواحد.
@@ -25,13 +26,26 @@ interface ExpoTicket {
 export class ExpoPushService {
   private readonly logger = new Logger(ExpoPushService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inbox: NotificationsService,
+  ) {}
 
   /**
-   * بيبعت لكل أجهزة المستخدم. بيبلع كل الأخطاء عن قصد: الإشعار مكمِّل
-   * للعملية مش جزء منها، ومحصلش إن فشل إشعار يرجّع حجز مدفوع.
+   * بيسجّل الإشعار في صندوق التطبيق (الجرس) وبعدين بيبعته push لكل أجهزة
+   * المستخدم. بيبلع كل الأخطاء عن قصد: الإشعار مكمِّل للعملية مش جزء منها،
+   * ومحصلش إن فشل إشعار يرجّع حجز مدفوع.
    */
   async sendToUser(userId: number, payload: PushPayload): Promise<void> {
+    // قبل فحص التفضيلات والأجهزة: التفضيل بيتحكم في الـ push (الإزعاج) بس،
+    // والعميل لازم يلاقي حالة حجزه في الصندوق حتى لو قفل الإشعارات.
+    const bookingId = Number(payload.data?.bookingId);
+    await this.inbox.record(userId, {
+      title: payload.title,
+      body: payload.body,
+      bookingId: Number.isInteger(bookingId) ? bookingId : undefined,
+    });
+
     try {
       // المستخدم اللي قافل تحديثات الحجز مش بيتبعتله — التفضيل ده هو نفسه
       // اللي بتعرضه شاشة الإشعارات في التطبيق.
