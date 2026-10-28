@@ -11,9 +11,14 @@ function errorCode(e: unknown): string {
   return '';
 }
 
+function errorCause(e: unknown): unknown {
+  if (e && typeof e === 'object' && 'cause' in e) return e.cause;
+  return undefined;
+}
+
 export function errorReason(e: unknown): string {
   const head = leadingSegment(e instanceof Error ? e.message : String(e));
-  const cause = e instanceof Error ? e.cause : undefined;
+  const cause = errorCause(e);
   const extra = [errorCode(e), errorCode(cause), cause instanceof Error ? leadingSegment(cause.message) : '']
     .filter(Boolean)
     .filter((part, i, all) => part !== head && all.indexOf(part) === i)
