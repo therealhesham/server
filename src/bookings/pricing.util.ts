@@ -6,6 +6,7 @@ import {
   floorForPeriodAmount,
   type ResolvedPriceFloor,
 } from './price-floor.util';
+import { getActiveCheckoutOneTimeFees, type CheckoutOneTimeFeeSnap } from './checkout-fees.util';
 import { resolveInterCityShippingSnap, type InterCityShippingSnap } from './inter-city-shipping.util';
 import { resolveRentalDiscountForPeriod, type ResolvedPeriodDiscount } from './rental-discount.util';
 
@@ -73,6 +74,8 @@ export interface PricingResult {
   deliveryFee: number;
   /** رسوم شحن بين المدن (دون ضريبة) — null لو الاستلام والإرجاع في نفس المدينة أو بلا مسار مسعَّر. */
   interCityShipping: InterCityShippingSnap | null;
+  /** رسوم إتمام الحجز الثابتة من الإدارة (دون ضريبة) — تنطبق على كل حجز. */
+  checkoutOneTimeFees: CheckoutOneTimeFeeSnap[];
   subtotal: number;
   preVat: number;
   /**
@@ -176,7 +179,9 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
       { lat: servicingBranch.latitude, lng: servicingBranch.longitude },
       { lat: input.deliveryLat, lng: input.deliveryLng },
     );
-    deliveryFee = round2(distanceKm * servicingBranch.deliveryFeePerKmSar);
+    // ريال كامل: لقطة newrent بتخزّن الرسوم الثابتة أرقاماً صحيحة، فكسر هنا
+    // كان هيخلّي فاتورة الحجز تختلف عن المبلغ المدفوع.
+    deliveryFee = Math.round(distanceKm * servicingBranch.deliveryFeePerKmSar);
   }
 
   // الأصل: مدينة فرع الاستلام، أو مدينة الفرع المنفِّذ للتوصيل — والوجهة دائماً
@@ -186,7 +191,9 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
   const interCityShipping = await resolveInterCityShippingSnap(prisma, originBranchId, input.returnBranchId);
 
   const extrasTotal = addons.reduce((sum, a) => sum + a.pricePerDay, 0) * numberOfDays;
-  const preVat = subtotal + extrasTotal + deliveryFee + (interCityShipping?.feeExclVatSar ?? 0);
+  const checkoutOneTimeFees = await getActiveCheckoutOneTimeFees(prisma);
+  const checkoutFeesTotal = checkoutOneTimeFees.reduce((sum, f) => sum + f.feeExclVatSar, 0);
+  const preVat = subtotal + extrasTotal + deliveryFee + (interCityShipping?.feeExclVatSar ?? 0) + checkoutFeesTotal;
 
   return {
     carModel: { id: carModel.id, vatRatePercent: carModel.vatRatePercent, categorySlug: carModel.FleetCategory.slug },
@@ -199,6 +206,7 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
     extrasTotal,
     deliveryFee,
     interCityShipping,
+    checkoutOneTimeFees,
     subtotal,
     preVat,
     basePeriodAmount,

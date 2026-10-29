@@ -4,7 +4,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService, type ResolvedCoupon } from '../coupons/coupons.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
-import { computeBookingPricing, round2 } from './pricing.util';
+import { computeBookingPricing, round2, type PricingResult } from './pricing.util';
 import { validateKyc } from './kyc-validation.util';
 import { isWithinBranchHours } from './branch-hours.util';
 import {
@@ -79,13 +79,72 @@ export class BookingsService {
     return count;
   }
 
+  /**
+   * لقطة السعر بنفس شكل newrent (BookingPricingSnapshotV1). الفاتورة وأرصدة
+   * الإدارة والاسترداد كلها بتتقرا من هنا — وأي حقل ناقص بيخلّيها ترجع لسعر
+   * الموديل العام بدل سعر الفرع المدفوع فعلاً (فاتورة ١٬٦١٠ لحجز بريال واحد).
+   */
+  private buildPricingSnapshot(pricing: PricingResult, coupon: ResolvedCoupon | null, discountAmountSar: number) {
+    const { numberOfDays, addons, interCityShipping, deliveryFee, rentalDiscount } = pricing;
+    const rentalOnlyDiscount = coupon?.scope === 'RENTAL_ONLY' ? discountAmountSar : 0;
+    const fullTotalDiscount = coupon && coupon.scope === 'FULL_TOTAL' ? discountAmountSar : 0;
+
+    // سعر اليوم الفعلي بعد الخصم التلقائي وبعد كود RENTAL_ONLY (مجمَّد فيه، لذلك
+    // discountExclTax صفر لذلك النطاق). للشهري = إجمالي الشهر ÷ الأيام، كما في newrent.
+    const rentalPricePerDayExclTax = round2(Math.max(0, pricing.subtotal - rentalOnlyDiscount) / numberOfDays);
+
+    // رسوم الإتمام من الإدارة + رسم التوصيل (مخصّص للتطبيق) في نفس القائمة،
+    // لأن مفسّر newrent بيجمع كل `checkoutOneTimeFees` في الإجمالي والرصيد والاسترداد.
+    const checkoutOneTimeFees = [
+      ...pricing.checkoutOneTimeFees,
+      ...(deliveryFee > 0 ? [{ slug: 'delivery', labelAr: 'رسوم التوصيل', feeExclVatSar: deliveryFee }] : []),
+    ];
+
+    const dailyDiscountPerDay =
+      pricing.rentalPeriodKind === 'daily' && rentalDiscount ? pricing.listPeriodAmount - pricing.basePeriodAmount : 0;
+
+    return {
+      items: addons.map((a) => ({
+        id: a.id,
+        slug: a.slug,
+        titleAr: a.title,
+        pricePerDayExclTax: a.pricePerDay,
+        days: numberOfDays,
+        lineTotalExclTax: a.pricePerDay * numberOfDays,
+      })),
+      rentalPricePerDayExclTax,
+      ...(interCityShipping ? { interCityShipping } : {}),
+      ...(checkoutOneTimeFees.length ? { checkoutOneTimeFees } : {}),
+      ...(dailyDiscountPerDay > 0
+        ? {
+            rentalDiscount: {
+              originalPricePerDayExclTax: Math.round(pricing.listPeriodAmount),
+              discountedPricePerDayExclTax: Math.round(pricing.basePeriodAmount),
+              discountPerDayExclTax: Math.round(dailyDiscountPerDay),
+            },
+          }
+        : {}),
+      ...(coupon
+        ? {
+            couponCode: {
+              code: coupon.code,
+              kind: coupon.kind,
+              scope: coupon.scope,
+              discountExclTax: fullTotalDiscount,
+              isCustomized: coupon.source === 'CUSTOMIZED',
+            },
+          }
+        : {}),
+    };
+  }
+
   async createBooking(userId: number, dto: CreateBookingDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('الجلسة غير صالحة.');
     if (!user.phone) throw new BadRequestException('رقم جوالك غير مسجّل على الحساب.');
 
     const pricing = await computeBookingPricing(this.prisma as unknown as PrismaClient, dto);
-    const { pickupAt, returnAt, numberOfDays, addons, interCityShipping } = pricing;
+    const { pickupAt, returnAt, numberOfDays } = pricing;
 
     // Resolved (and re-validated) here so a coupon can never be applied twice
     // or on a stale eligibility check between preview and commit. Monthly
@@ -164,20 +223,9 @@ export class BookingsService {
           numberOfDays,
           rentalPeriodKind: pricing.rentalPeriodKind === 'monthly' ? 'MONTHLY' : 'DAILY',
           termsAccepted: dto.termsAccepted ?? true,
-          // نفس شكل لقطة newrent (BookingPricingSnapshotV1): مفسّر الفاتورة
-          // وصفحات الإدارة بيقروا `items` و`interCityShipping` من هنا، فمصفوفة
-          // الإضافات الخام القديمة كانت بتتجاهل كل حاجة.
-          addonsJson: JSON.stringify({
-            items: addons.map((a) => ({
-              id: a.id,
-              slug: a.slug,
-              titleAr: a.title,
-              pricePerDayExclTax: a.pricePerDay,
-              days: numberOfDays,
-              lineTotalExclTax: a.pricePerDay * numberOfDays,
-            })),
-            ...(interCityShipping ? { interCityShipping } : {}),
-          }),
+          addonsJson: JSON.stringify(
+            this.buildPricingSnapshot(pricing, coupon, discountAmountSar),
+          ),
           paymentMethod: dto.paymentMethodId?.toUpperCase() ?? null,
           idDocumentKind,
           nationalIdNumber: dto.kyc.nationalIdNumber ?? null,

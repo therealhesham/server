@@ -21,6 +21,11 @@ export class FleetController {
     return this.fleetService.listInterCityFees();
   }
 
+  @Get('fleet/checkout-fees')
+  listCheckoutFees() {
+    return this.fleetService.listCheckoutFees();
+  }
+
   @Get('fleet')
   listCars(@Query() query: ListCarsQueryDto) {
     return this.fleetService.listCars(query);

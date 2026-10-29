@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { getActiveCheckoutOneTimeFees } from '../bookings/checkout-fees.util';
 import { getActiveRentalDiscounts, resolveBestPeriodDiscount } from '../bookings/rental-discount.util';
 import { ListCarsQueryDto } from './dto/list-cars-query.dto';
 
@@ -87,6 +88,11 @@ export class FleetService {
       select: { fromCityId: true, toCityId: true, feeExclVatSar: true },
     });
     return rows;
+  }
+
+  // معاينة فقط — الفرض الفعلي في computeBookingPricing.
+  async listCheckoutFees() {
+    return getActiveCheckoutOneTimeFees(this.prisma as unknown as PrismaClient);
   }
 
   async listCars(query: ListCarsQueryDto) {
