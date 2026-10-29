@@ -46,6 +46,22 @@ export class PaymentsService {
     const amountSar = booking.snapshotTotalAmountSar;
     if (!amountSar || amountSar <= 0) throw new BadRequestException('تعذّر تحديد مبلغ الحجز.');
 
+    // الجلسة الجديدة بتستبدل paymentSessionRef — فلازم نتأكد الأول إن الجلسة
+    // السابقة ما اتدفعتش (وإشعار جيديا ما وصلش)، وإلا العميل يدفع مرتين وتضيع
+    // الدفعة الأولى من الـ reconcile. لو الفحص نفسه فشل نرفض بدل المخاطرة.
+    if (booking.paymentSessionRef) {
+      let previous: GeideaOrder | null;
+      try {
+        previous = await this.geidea.fetchOrderByMerchantReference(booking.paymentSessionRef);
+      } catch {
+        throw new BadRequestException('تعذّر التحقق من حالة الدفع السابقة. حاول مرة أخرى بعد قليل.');
+      }
+      if (previous && isOrderPaid(previous)) {
+        await this.applyPaidOrder(bookingRequestId, previous);
+        throw new BadRequestException('استلمنا دفعك لهذا الحجز بالفعل — لا حاجة لدفعه مرة أخرى.');
+      }
+    }
+
     const session = await this.geidea.createCheckoutSession({ bookingRequestId, amountSar, redirectUrl });
 
     await this.prisma.bookingRequest.update({

@@ -1,6 +1,7 @@
 import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { FleetService } from './fleet.service';
 import { ListCarsQueryDto } from './dto/list-cars-query.dto';
+import { CarDetailQueryDto } from './dto/car-detail-query.dto';
 
 @Controller()
 export class FleetController {
@@ -32,10 +33,7 @@ export class FleetController {
   }
 
   @Get('fleet/:id')
-  getCar(
-    @Param('id', ParseIntPipe) id: number,
-    @Query('branchId', new ParseIntPipe({ optional: true })) branchId?: number,
-  ) {
-    return this.fleetService.getCar(id, branchId);
+  getCar(@Param('id', ParseIntPipe) id: number, @Query() query: CarDetailQueryDto) {
+    return this.fleetService.getCar(id, query.branchId, query.pickupAt, query.returnAt);
   }
 }

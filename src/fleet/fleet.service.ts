@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { availabilityKey, countOverlappingBookings, daysBetweenDates } from '../bookings/availability.util';
 import { getActiveCheckoutOneTimeFees } from '../bookings/checkout-fees.util';
 import { getActiveRentalDiscounts, resolveBestPeriodDiscount } from '../bookings/rental-discount.util';
 import { ListCarsQueryDto } from './dto/list-cars-query.dto';
@@ -134,19 +135,43 @@ export class FleetService {
       return discount?.discountedAmountExclTax ?? list;
     };
 
+    // مع التواريخ: كل صف أسطول يعرف كم وحدة فاضلة في الفترة دي. السيارة غير
+    // المتاحة بتفضل ظاهرة (بحالة available=false) مش بتختفي — العميل لازم يعرف
+    // إنها محجوزة في الفترة دي مش إنها مش موجودة.
+    const span = parseRequestedSpan(query.pickupAt, query.returnAt);
+    const taken = span
+      ? await countOverlappingBookings(this.prisma, {
+          carModelIds: [...new Set(fleetRows.map((r) => r.modelId))],
+          branchIds: [...new Set(fleetRows.map((r) => r.branchId))],
+          pickupAt: span.pickupAt,
+          days: span.days,
+        })
+      : null;
+    const unitsLeftFor = (row: (typeof fleetRows)[number]): number | null =>
+      taken ? Math.max(0, row.quantity - (taken.get(availabilityKey(row.modelId, row.branchId)) ?? 0)) : null;
+    const isAvailable = (left: number | null) => left == null || left > 0;
+
     // Without a branch filter, the same CarModel can appear at several
-    // branches — collapse to one card per model showing its cheapest price.
-    const byModel = new Map<number, { row: (typeof fleetRows)[number]; price: number }>();
+    // branches — collapse to one card per model showing its cheapest price,
+    // preferring a branch that is actually free in the requested period.
+    const byModel = new Map<number, { row: (typeof fleetRows)[number]; price: number; left: number | null }>();
     for (const row of fleetRows) {
       const price = effectiveDaily(row);
+      const left = unitsLeftFor(row);
       const existing = byModel.get(row.modelId);
-      if (!existing || price < existing.price) byModel.set(row.modelId, { row, price });
+      const better =
+        !existing ||
+        (isAvailable(left) && !isAvailable(existing.left)) ||
+        (isAvailable(left) === isAvailable(existing.left) && price < existing.price);
+      if (better) byModel.set(row.modelId, { row, price, left });
     }
 
-    return [...byModel.values()].map(({ row, price }) => this.toCarSummary(row, price));
+    const cards = [...byModel.values()].map(({ row, price, left }) => this.toCarSummary(row, price, left));
+    // المتاحة أولاً، وبعدها غير المتاحة — بنفس ترتيب العرض الأصلي داخل كل مجموعة.
+    return span ? [...cards.filter((c) => c.available), ...cards.filter((c) => !c.available)] : cards;
   }
 
-  async getCar(modelId: number, branchId?: number) {
+  async getCar(modelId: number, branchId?: number, pickupAtRaw?: string, returnAtRaw?: string) {
     const carModel = await this.prisma.carModel.findUnique({
       where: { id: modelId },
       include: {
@@ -160,6 +185,16 @@ export class FleetService {
       },
     });
     if (!carModel) throw new NotFoundException('Car model not found');
+
+    const span = parseRequestedSpan(pickupAtRaw, returnAtRaw);
+    const taken = span
+      ? await countOverlappingBookings(this.prisma, {
+          carModelIds: [modelId],
+          branchIds: carModel.Fleet.map((f) => f.branchId),
+          pickupAt: span.pickupAt,
+          days: span.days,
+        })
+      : null;
 
     const cheapestFleet = carModel.Fleet[0];
     const listPricePerDay = cheapestFleet?.pricePerDayExclTax ?? carModel.price;
@@ -202,13 +237,21 @@ export class FleetService {
       originalPricePerDay: dailyDiscount ? listPricePerDay : null,
       priceMonthly: cheapestFleet?.priceMonthlyExclTax ?? carModel.priceMonthlyExclTax ?? null,
       vatRatePercent: carModel.vatRatePercent,
-      availability: carModel.Fleet.map((f) => ({
-        branchId: f.branchId,
-        branchName: f.Branch.name,
-        quantity: f.quantity,
-        pricePerDay: f.pricePerDayExclTax,
-        priceMonthly: f.priceMonthlyExclTax,
-      })),
+      availability: carModel.Fleet.map((f) => {
+        const unitsLeft = taken
+          ? Math.max(0, f.quantity - (taken.get(availabilityKey(modelId, f.branchId)) ?? 0))
+          : null;
+        return {
+          branchId: f.branchId,
+          branchName: f.Branch.name,
+          quantity: f.quantity,
+          // null لما التواريخ ما اتبعتتش — العميل ساعتها ما يعرفش إلا المخزون.
+          unitsLeft,
+          available: unitsLeft == null ? null : unitsLeft > 0,
+          pricePerDay: f.pricePerDayExclTax,
+          priceMonthly: f.priceMonthlyExclTax,
+        };
+      }),
     };
   }
 
@@ -238,6 +281,8 @@ export class FleetService {
   },
   /** السعر اليومي بعد الخصم التلقائي — يسقط على سعر القائمة لو مفيش خصم. */
   effectivePricePerDay?: number,
+  /** الوحدات الفاضلة في الفترة المطلوبة — null لما التواريخ ما اتبعتتش. */
+  unitsLeft: number | null = null,
   ) {
     // `CarModel.min*` أرضية سعر وليست سعراً — البديل الصحيح هو سعر الموديل
     // نفسه، مطابقاً لـ rentcar's resolveBranchBasePriceForModel.
@@ -267,8 +312,20 @@ export class FleetService {
       vatRatePercent: row.CarModel.vatRatePercent,
       branch: { id: row.Branch.id, name: row.Branch.name, slug: row.Branch.slug },
       quantityAvailable: row.quantity,
+      unitsLeft,
+      available: unitsLeft == null ? null : unitsLeft > 0,
     };
   }
+}
+
+// الفترة المطلوبة للبحث — نفس حساب الأيام اللي بيتحاسب عليه الحجز. تواريخ ناقصة
+// أو معكوسة تعني «بدون فحص توفّر» بدل خطأ، فالقائمة تفضل شغالة بدون تواريخ.
+function parseRequestedSpan(pickupAtRaw?: string, returnAtRaw?: string): { pickupAt: Date; days: number } | null {
+  if (!pickupAtRaw || !returnAtRaw) return null;
+  const pickupAt = new Date(pickupAtRaw);
+  const returnAt = new Date(returnAtRaw);
+  if (Number.isNaN(pickupAt.getTime()) || Number.isNaN(returnAt.getTime()) || returnAt <= pickupAt) return null;
+  return { pickupAt, days: daysBetweenDates(pickupAt, returnAt) };
 }
 
 function safeParseJson(raw: string | null): unknown {

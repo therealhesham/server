@@ -7,6 +7,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { computeBookingPricing, round2, type PricingResult } from './pricing.util';
 import { validateKyc } from './kyc-validation.util';
 import { isWithinBranchHours } from './branch-hours.util';
+import { availabilityKey, countOverlappingBookings } from './availability.util';
 import {
   callRentcarInternal,
   type CancelPreviewResponse,
@@ -14,26 +15,11 @@ import {
   type InvoiceResponse,
 } from './rentcar-internal.util';
 
-// Non-blocking statuses mirror rentcar's NON_BLOCKING_BOOKING_STATUSES —
-// a cancelled/rejected/returned/completed booking no longer occupies the car.
-const NON_BLOCKING_STATUSES = ['CANCELLED', 'REJECTED', 'RETURNED', 'COMPLETED'];
-
 const ID_KIND_TO_DOCUMENT_KIND: Record<string, string> = {
   citizen: 'CITIZEN',
   resident: 'RESIDENT',
   visitor: 'VISITOR',
 };
-
-// Day-level [start, end) range, UTC-anchored so DST/timezone offsets on the
-// stored timestamps can't shift which calendar day a booking starts on.
-function dayRange(pickupDate: Date, days: number): { start: number; end: number } {
-  const start = Date.UTC(pickupDate.getUTCFullYear(), pickupDate.getUTCMonth(), pickupDate.getUTCDate());
-  return { start, end: start + days * 86_400_000 };
-}
-
-function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
-  return aStart < bEnd && bStart < aEnd;
-}
 
 @Injectable()
 export class BookingsService {
@@ -61,22 +47,13 @@ export class BookingsService {
     days: number,
     client: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<number> {
-    const rows = await client.bookingRequest.findMany({
-      where: {
-        kind: 'DIRECT',
-        carModelId,
-        returnBranchId,
-        NOT: { status: { in: NON_BLOCKING_STATUSES } },
-      },
-      select: { pickupDate: true, numberOfDays: true },
+    const counts = await countOverlappingBookings(client, {
+      carModelIds: [carModelId],
+      branchIds: [returnBranchId],
+      pickupAt,
+      days,
     });
-    const requested = dayRange(pickupAt, days);
-    let count = 0;
-    for (const row of rows) {
-      const other = dayRange(row.pickupDate, Math.max(1, row.numberOfDays));
-      if (rangesOverlap(requested.start, requested.end, other.start, other.end)) count += 1;
-    }
-    return count;
+    return counts.get(availabilityKey(carModelId, returnBranchId)) ?? 0;
   }
 
   /**

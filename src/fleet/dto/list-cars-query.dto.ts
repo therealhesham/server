@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Min } from 'class-validator';
+import { IsInt, IsISO8601, IsOptional, Min } from 'class-validator';
 
 export class ListCarsQueryDto {
   @IsOptional()
@@ -13,4 +13,14 @@ export class ListCarsQueryDto {
   @IsInt()
   @Min(1)
   categoryId?: number;
+
+  // لو الاتنين موجودين، كل سيارة بترجع بحالة توفّرها في الفترة دي (available)
+  // — نفس فحص آخر خطوة الحجز، لكن قبلها. لو ناقص واحد منهم تتجاهل الاتنين.
+  @IsOptional()
+  @IsISO8601()
+  pickupAt?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  returnAt?: string;
 }
