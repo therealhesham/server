@@ -6,6 +6,7 @@ import {
   floorForPeriodAmount,
   type ResolvedPriceFloor,
 } from './price-floor.util';
+import { resolveInterCityShippingSnap, type InterCityShippingSnap } from './inter-city-shipping.util';
 import { resolveRentalDiscountForPeriod, type ResolvedPeriodDiscount } from './rental-discount.util';
 
 export function round2(n: number): number {
@@ -45,6 +46,9 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 export interface PricingInput {
   carModelId: number;
   returnBranchId: number;
+  // فرع الاستلام (وضع 'branch') — أصل رسوم الشحن بين المدن؛ يسقط على returnBranchId
+  // لو غاب، زي createBooking. في وضع 'delivery' الأصل هو deliveryBranchId.
+  pickupBranchId?: number;
   pickupAt: string;
   returnAt: string;
   addonIds?: number[];
@@ -67,6 +71,8 @@ export interface PricingResult {
   addons: { id: number; slug: string; title: string; pricePerDay: number }[];
   extrasTotal: number;
   deliveryFee: number;
+  /** رسوم شحن بين المدن (دون ضريبة) — null لو الاستلام والإرجاع في نفس المدينة أو بلا مسار مسعَّر. */
+  interCityShipping: InterCityShippingSnap | null;
   subtotal: number;
   preVat: number;
   /**
@@ -173,8 +179,14 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
     deliveryFee = round2(distanceKm * servicingBranch.deliveryFeePerKmSar);
   }
 
+  // الأصل: مدينة فرع الاستلام، أو مدينة الفرع المنفِّذ للتوصيل — والوجهة دائماً
+  // فرع الإرجاع. رسم ثابت لمرة واحدة، مش بالأيام، ولا يدخل في نطاق خصم RENTAL_ONLY.
+  const originBranchId =
+    input.pickupMode === 'delivery' ? input.deliveryBranchId! : input.pickupBranchId ?? input.returnBranchId;
+  const interCityShipping = await resolveInterCityShippingSnap(prisma, originBranchId, input.returnBranchId);
+
   const extrasTotal = addons.reduce((sum, a) => sum + a.pricePerDay, 0) * numberOfDays;
-  const preVat = subtotal + extrasTotal + deliveryFee;
+  const preVat = subtotal + extrasTotal + deliveryFee + (interCityShipping?.feeExclVatSar ?? 0);
 
   return {
     carModel: { id: carModel.id, vatRatePercent: carModel.vatRatePercent, categorySlug: carModel.FleetCategory.slug },
@@ -186,6 +198,7 @@ export async function computeBookingPricing(prisma: PrismaClient, input: Pricing
     addons,
     extrasTotal,
     deliveryFee,
+    interCityShipping,
     subtotal,
     preVat,
     basePeriodAmount,

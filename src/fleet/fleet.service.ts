@@ -79,6 +79,16 @@ export class FleetService {
       }));
   }
 
+  // معاينة فقط — الرسوم الفعلية تُحسب وتُفرض من السيرفر عند الحجز
+  // (resolveInterCityShippingSnap)، فالتطبيق ما يقدرش يخفّضها بتعديل هذه القائمة.
+  async listInterCityFees() {
+    const rows = await this.prisma.interCityShippingFee.findMany({
+      where: { isActive: true, feeExclVatSar: { gt: 0 } },
+      select: { fromCityId: true, toCityId: true, feeExclVatSar: true },
+    });
+    return rows;
+  }
+
   async listCars(query: ListCarsQueryDto) {
     const fleetRows = await this.prisma.fleet.findMany({
       where: {

@@ -85,7 +85,7 @@ export class BookingsService {
     if (!user.phone) throw new BadRequestException('رقم جوالك غير مسجّل على الحساب.');
 
     const pricing = await computeBookingPricing(this.prisma as unknown as PrismaClient, dto);
-    const { pickupAt, returnAt, numberOfDays, dailyRate, addons, deliveryFee } = pricing;
+    const { pickupAt, returnAt, numberOfDays, addons, interCityShipping } = pricing;
 
     // Resolved (and re-validated) here so a coupon can never be applied twice
     // or on a stale eligibility check between preview and commit. Monthly
@@ -164,7 +164,20 @@ export class BookingsService {
           numberOfDays,
           rentalPeriodKind: pricing.rentalPeriodKind === 'monthly' ? 'MONTHLY' : 'DAILY',
           termsAccepted: dto.termsAccepted ?? true,
-          addonsJson: JSON.stringify(addons),
+          // نفس شكل لقطة newrent (BookingPricingSnapshotV1): مفسّر الفاتورة
+          // وصفحات الإدارة بيقروا `items` و`interCityShipping` من هنا، فمصفوفة
+          // الإضافات الخام القديمة كانت بتتجاهل كل حاجة.
+          addonsJson: JSON.stringify({
+            items: addons.map((a) => ({
+              id: a.id,
+              slug: a.slug,
+              titleAr: a.title,
+              pricePerDayExclTax: a.pricePerDay,
+              days: numberOfDays,
+              lineTotalExclTax: a.pricePerDay * numberOfDays,
+            })),
+            ...(interCityShipping ? { interCityShipping } : {}),
+          }),
           paymentMethod: dto.paymentMethodId?.toUpperCase() ?? null,
           idDocumentKind,
           nationalIdNumber: dto.kyc.nationalIdNumber ?? null,

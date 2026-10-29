@@ -173,6 +173,7 @@ export class CouponsService {
     const pricingInput: PricingInput = {
       carModelId: dto.carModelId,
       returnBranchId: dto.returnBranchId,
+      pickupBranchId: dto.pickupBranchId,
       pickupAt: dto.pickupAt,
       returnAt: dto.returnAt,
       addonIds: dto.addonIds,

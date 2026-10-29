@@ -13,6 +13,11 @@ export class ValidateCouponDto {
   @IsInt()
   returnBranchId!: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  pickupBranchId?: number;
+
   @IsISO8601()
   pickupAt!: string;
 
