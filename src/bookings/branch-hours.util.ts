@@ -45,7 +45,8 @@ export function isWithinBranchHours(openingHoursJson: string | null | undefined,
     return null;
   }
   const days = parsed?.days;
-  if (!days) return null;
+  // `days` فاضية = مفيش قيود (الموقع بيعتبرها ٢٤/٧) — مش «مقفول كل الأيام».
+  if (!days || Object.keys(days).length === 0) return null;
 
   const { weekday, hour, minute } = toRiyadhParts(at);
   const minutes = hour * 60 + minute;
