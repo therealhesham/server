@@ -14,6 +14,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PlacesModule } from './places/places.module';
 import { ContactModule } from './contact/contact.module';
 import { HealthModule } from './health/health.module';
+import { DriverModule } from './driver/driver.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { HealthModule } from './health/health.module';
     PlacesModule,
     ContactModule,
     HealthModule,
+    DriverModule,
   ],
 })
 export class AppModule {}

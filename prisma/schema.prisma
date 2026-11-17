@@ -151,6 +151,14 @@ model BookingRequest {
   pickupMode                                   String?              @db.VarChar(16)
   deliveryLat                                  Float?
   deliveryLng                                  Float?
+  returnMode                                   String?              @db.VarChar(16)
+  returnLat                                    Float?
+  returnLng                                    Float?
+  returnAddress                                String?              @db.Text
+  deliveryDriverId                             Int?
+  deliveryDriverAssignedAt                     DateTime?
+  returnDriverId                               Int?
+  returnDriverAssignedAt                       DateTime?
   pickupDate                                   DateTime
   numberOfDays                                 Int
   termsAccepted                                Boolean              @default(true)
@@ -214,7 +222,11 @@ model BookingRequest {
   VehicleUnit                                  VehicleUnit?         @relation(fields: [vehicleUnitId], references: [id])
   CouponRedemption                             CouponRedemption?
   PaymentTransaction                           PaymentTransaction[]
+  DeliveryDriver_BookingDeliveryDriver         DeliveryDriver?      @relation("BookingDeliveryDriver", fields: [deliveryDriverId], references: [id])
+  DeliveryDriver_BookingReturnDriver           DeliveryDriver?      @relation("BookingReturnDriver", fields: [returnDriverId], references: [id])
 
+  @@index([deliveryDriverId])
+  @@index([returnDriverId])
   @@index([branchId])
   @@index([carModelId])
   @@index([customerId])
@@ -224,6 +236,21 @@ model BookingRequest {
   @@index([vehiclePlateNumber])
   @@index([vehicleUnitId])
   @@index([isHidden, createdAt])
+}
+
+/// سواقو التوصيل — تُنشأ وتُعيَّن من لوحة rentcar؛ هذا الـ API يقرأها فقط (تسجيل دخول + رحلاتي).
+model DeliveryDriver {
+  id                                   Int              @id @default(autoincrement())
+  name                                 String           @db.VarChar(255)
+  phone                                String           @unique @db.VarChar(20)
+  passwordHash                         String           @db.VarChar(255)
+  isActive                             Boolean          @default(true)
+  createdAt                            DateTime         @default(now())
+  updatedAt                            DateTime
+  BookingRequest_BookingDeliveryDriver BookingRequest[] @relation("BookingDeliveryDriver")
+  BookingRequest_BookingReturnDriver   BookingRequest[] @relation("BookingReturnDriver")
+
+  @@index([isActive])
 }
 
 model Branch {
